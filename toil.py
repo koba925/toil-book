@@ -112,6 +112,7 @@ class Parser:
             case None | bool() | int(): return self._current_and_advance()
             case "(": return self._group()
             case "func": return self._func()
+            case "def": return self._def()
             case "scope": return self._scope()
             case "if": return self._if()
             case "while": return self._while()
@@ -132,6 +133,20 @@ class Parser:
         body_expr = self._expression()
         self._consume("end")
         return ("func", [params, body_expr])
+
+    def _def(self):
+        self._current_and_advance()
+        call_expr = self._expression()
+        self._consume("do")
+        body_expr = self._expression()
+        self._consume("end")
+        match call_expr:
+            case (name, params):
+                return ("define", [name, ("func", [params, body_expr])])
+            case str():
+                return ("define", [call_expr, ("func", [[], body_expr])])
+            case _:
+                assert False, f"Invalid def syntax @ _def(): {call_expr}"
 
     def _scope(self):
         self._current_and_advance()
@@ -319,42 +334,35 @@ if __name__ == "__main__":
 
     print("Function:")
 
-    print(toil.ast(r""" func do 2 end """)) # -> ('func', [[], 2])
-    print(toil.walk(r""" func do 2 end """))
-    # -> ('closure', [[], 2, <__main__.Environment object at ...>])
-    print(toil.walk(r""" func do 2 end () """)) # -> 2
+    print(toil.ast(r""" def f do 2 end """))
+    # -> ('define', ['f', ('func', [[], 2])])
+    toil.walk(r""" def f do 2 end """)
+    print(toil.walk(r""" f() """)) # -> 2
 
-    print(toil.ast(r""" func a do a + 2 end """))
-    # -> ('func', [['a'], ('add', ['a', 2])])
-    print(toil.walk(r""" func a do a + 2 end """))
-    # -> ('closure', [['a'], ('add', ['a', 2]), <__main__.Environment ...>])
-    print(toil.walk(r""" func a do a + 2 end (3) """)) # -> 5
+    print(toil.ast(r""" def f() do 3 end """))
+    # -> ('define', ['f', ('func', [[], 3])])
+    toil.walk(r""" def f() do 3 end """)
+    print(toil.walk(r""" f() """)) # -> 3
 
-    print(toil.ast(r""" func a, b do a + b end """))
-    # -> ('func', [['a', 'b'], ('add', ['a', 'b'])])
-    print(toil.walk(r""" func a, b do a + b end """))
-    # -> ('closure', [['a', 'b'], ('add', ['a', 'b']), <__main__.Environment ...>])
-    print(toil.walk(r""" func a, b do a + b end (2, 3) """)) # -> 5
+    print(toil.ast(r""" def f(a) do a + 2 end """))
+    # -> ('define', ['f', ('func', [['a'], ('add', ['a', 2])])])
+    toil.walk(r""" def f(a) do a + 2 end """)
+    print(toil.walk(r""" f(3) """)) # -> 5
 
-    # toil.walk(r""" func a, b a + b end """) # -> Expected do
-    # toil.walk(r""" func a, b do end """) # -> Expected End
-    # toil.walk(r""" func a, b do a + b """) # -> Expected End
-    # toil.walk(r""" func a, do a + b end """) # -> Expected do
-    # toil.walk(r""" func , b do a + b end """) # -> Invalid token
-
-    print(toil.walk(r"""
-        twice := func f, x do f(f(x)) end;
-        double := func x do x * 2 end;
-        twice(double, 3)
-    """)) # -> 12
+    print(toil.ast(r""" def f(a, b) do a + b end """))
+    # -> ('define', ['f', ('func', [['a', 'b'], ('add', ['a', 'b'])])])
+    toil.walk(r""" def f(a, b) do a + b end """)
+    print(toil.walk(r""" f(2, 3) """)) # -> 5
 
     print(toil.walk(r"""
         a := 2;
-        f := func do a end;
-        g := func do a := 3; f() end;
+        def f do a end;
+        def g do a := 3; f() end;
         g()
     """)) # -> 2
 
-    print(toil.walk(r"""
-        func a do func b do a + b end end (2)(3)
-    """)) # -> 5
+    # toil.walk(r""" def do a end """) # -> Expected do
+    # toil.walk(r""" def f(a) a end """) # -> Expected do
+    # toil.walk(r""" def f(a) do end """) # -> Expected end
+    # toil.walk(r""" def f(a) do a """) # -> Expected end
+    # toil.walk(r""" def 2 do a end """) # -> Invalid def syntax
