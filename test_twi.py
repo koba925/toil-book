@@ -507,5 +507,34 @@ class TestExamples:
         assert capsys.readouterr().out == "False\n1\nFalse\n3\nFalse\n5\nFalse\n7\nFalse\n9\n"
 
 
+import os, sys, io, runpy
+
+class TestCommandLine:
+    def test_from_file(self, capsys, monkeypatch):
+        toil_script = os.path.join(os.path.dirname(__file__), "toil.py")
+        gcd_script = os.path.join(os.path.dirname(__file__), "gcd.toil")
+        monkeypatch.setattr(sys, "argv", ["toil.py", gcd_script])
+
+        with pytest.raises(SystemExit) as e:
+            runpy.run_path(toil_script, run_name="__main__")
+
+        assert capsys.readouterr().out == "12\n"
+        assert e.value.code == 0
+
+    def test_repl(self, capsys, monkeypatch):
+        toil_script = os.path.join(os.path.dirname(__file__), "toil.py")
+        monkeypatch.setattr(sys, "argv", ["toil.py", "--repl"])
+        monkeypatch.setattr(sys, "stdin", io.StringIO("print(2 + 3)\n"))
+
+        with pytest.raises(SystemExit) as e:
+            runpy.run_path(toil_script, run_name="__main__")
+
+        out = capsys.readouterr().out
+        assert "AST:\n('print', [('add', [2, 3])])" in out
+        assert "Output:\n5\n" in out
+        assert "Result:\nNone\n" in out
+        assert e.value.code == 0
+
+
 if __name__ == "__main__":
     pytest.main([__file__])
