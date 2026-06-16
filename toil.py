@@ -112,6 +112,7 @@ class Parser:
             case None | bool() | int(): return self._current_and_advance()
             case "(": return self._group()
             case "scope": return self._scope()
+            case "if": return self._if()
             case str(name) if is_ident(name): return self._current_and_advance()
             case invalid:
                 assert False, f"Invalid token @ _primary(): {invalid}"
@@ -127,6 +128,16 @@ class Parser:
         body_expr = self._expression()
         self._consume("end")
         return ("scope", [body_expr])
+
+    def _if(self):
+        self._current_and_advance()
+        cond_expr = self._expression()
+        self._consume("then")
+        then_expr = self._expression()
+        self._consume("else")
+        else_expr = self._expression()
+        self._consume("end")
+        return ("if", [cond_expr, then_expr, else_expr])
 
     def _binary_left(self, ops, sub_elem):
         left = sub_elem()
@@ -288,18 +299,27 @@ if __name__ == "__main__":
 
     # Example
 
-    print("Scope:")
+    print("If:")
 
-    print(toil.walk(r""" a := 2; scope a end """)) # -> 2
-    print(toil.walk(r""" a := 2; scope scope a end end """)) # -> 2
+    print(toil.ast(r""" if 2 == 2 then 3 + 3 else 4 + 4 end """))
+    # -> ('if', [('equal', [2, 2]), ('add', [3, 3]), ('add', [4, 4])])
+    print(toil.walk(r""" if 2 == 2 then 3 + 3 else 4 + 4 end """))  # -> 6
+    print(toil.walk(r""" if 2 == 3 then 3 + 3 else 4 + 4 end """))  # -> 8
 
-    print(toil.walk(r""" a := 2; scope a := 3 end """)) # -> 3
-    print(toil.walk(r""" a """)) # -> 2
+    print(toil.walk(r""" if True then 3 else 4 end * 5 """))  # -> 15
 
-    print(toil.walk(r""" a := 2; scope a = 3 end """)) # -> 3
-    print(toil.walk(r""" a """)) # -> 3
+    print(toil.walk(r""" if True then if True then 3 else 4 end else 5 end """))
+    # -> 3
+    print(toil.walk(r""" if True then if False then 3 else 4 end else 5 end """))
+    # -> 4
+    print(toil.walk(r""" if False then 3 else if True then 4 else 5 end end """))
+    # -> 4
+    print(toil.walk(r""" if False then 3 else if False then 4 else 5 end end """))
+    # -> 5
 
-    # toil.walk(r""" a := 2; scope d = 3 end """)  # -> Undefined variable
-    # toil.walk(r""" scope 2 """)  # -> Expected end
-    # toil.walk(r""" scope end """)  # -> Expected end
-
+    # toil.walk(r""" if then 2 else 3 end """) # -> Expected then
+    # toil.walk(r""" if True 2 else 3 end """) # -> Expected then
+    # toil.walk(r""" if True then else 3 end """) # -> Expected else
+    # toil.walk(r""" if True then 2 3 end """) # -> Expected else
+    # toil.walk(r""" if True then 2 else end """) # -> Expected end
+    # toil.walk(r""" if True then 2 else 3 """) # -> Expected end

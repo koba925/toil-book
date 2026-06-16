@@ -209,6 +209,30 @@ class TestTreeWalkInterpreter:
         with pytest.raises(AssertionError, match="Expected end"):
             toil.walk(r""" scope end """)
 
+    def test_if(self):
+        assert toil.walk(r""" if 2 == 2 then 3 + 3 else 4 + 4 end """) == 6
+        assert toil.walk(r""" if 2 == 3 then 3 + 3 else 4 + 4 end """) == 8
+
+        assert toil.walk(r""" if True then 3 else 4 end * 5 """) == 15
+
+        assert toil.walk(r""" if True then if True then 3 else 4 end else 5 end """) == 3
+        assert toil.walk(r""" if True then if False then 3 else 4 end else 5 end """) == 4
+        assert toil.walk(r""" if False then 3 else if True then 4 else 5 end end """) == 4
+        assert toil.walk(r""" if False then 3 else if False then 4 else 5 end end """) == 5
+
+        with pytest.raises(AssertionError, match="Expected then"):
+            toil.walk(r""" if then 2 else 3 end """)
+        with pytest.raises(AssertionError, match="Expected then"):
+            toil.walk(r""" if True 2 else 3 end """)
+        with pytest.raises(AssertionError, match="Expected else"):
+            toil.walk(r""" if True then else 3 end """)
+        with pytest.raises(AssertionError, match="Expected else"):
+            toil.walk(r""" if True then 2 3 end """)
+        with pytest.raises(AssertionError, match="Expected end"):
+            toil.walk(r""" if True then 2 else end """)
+        with pytest.raises(AssertionError, match="Expected end"):
+            toil.walk(r""" if True then 2 else 3 """)
+
     def test_empty_source(self):
         with pytest.raises(AssertionError, match="Invalid token"):
             toil.walk(r"""""")
