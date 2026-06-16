@@ -103,6 +103,49 @@ class TestEvaluator:
         with pytest.raises(AssertionError, match=r"Undefined variable @ val\(\): not_defined"):
             toil.eval(("not_defined", []))
 
+    def test_user_functions(self):
+        toil.eval(("define", ["myadd", ("func", [["a", "b"], ("add", ["a", "b"])])]))
+        assert toil.eval(("myadd", [2, 3])) == 5
+
+        assert toil.eval(("myadd", [("myadd", [2, 3]), ("add", [4, 5])])) == 14
+
+        assert toil.eval((
+            ("func", [["a", "b"], ("add", ["a", "b"])]),
+            [2, 3]
+        )) == 5
+
+        assert toil.eval(("seq", [
+            ("define", ["twice", ("func", [["f", "x"], ("f", [("f", ["x"])])])]),
+            ("define", ["double", ("func", [["x"], ("mul", ["x", 2])])]),
+            ("twice", ["double", 3])
+        ])) == 12
+
+        with pytest.raises(AssertionError, match="Undefined variable"):
+            toil.eval(("not_defined", []))
+        with pytest.raises(AssertionError, match="Invalid operator"):
+            toil.eval((2, [3, 4]))
+
+        assert toil.eval(("seq", [
+            ("define", ["a", 2]),
+            ("define", ["f", ("func", [[], "a"])]),
+            ("define", ["g", ("func", [[], ("seq", [
+                ("define", ["a", 3]),
+                ("f", [])
+            ])])]),
+            ("g", [])
+        ])) == 3
+
+        assert toil.eval(("seq", [
+            ("define", ["a", 2]),
+            ("define", ["f", ("func", [[], "a"])]),
+            ("f", [])
+        ])) == 2
+
+        assert toil.eval(("scope", [("seq", [
+            ("define", ["a", 3]),
+            ("f", [])
+        ])])) == 3
+
 
 if __name__ == "__main__":
     pytest.main([__file__])
