@@ -513,7 +513,7 @@ class TestCommandLine:
     def test_from_file(self, capsys, monkeypatch):
         toil_script = os.path.join(os.path.dirname(__file__), "toil.py")
         gcd_script = os.path.join(os.path.dirname(__file__), "gcd.toil")
-        monkeypatch.setattr(sys, "argv", ["toil.py", gcd_script])
+        monkeypatch.setattr(sys, "argv", ["toil.py", "--walk", gcd_script])
 
         with pytest.raises(SystemExit) as e:
             runpy.run_path(toil_script, run_name="__main__")

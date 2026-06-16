@@ -367,6 +367,9 @@ class Interpreter:
     def execute(self, code):
         return VM(code).execute()
 
+    def run(self, src):
+        return self.execute(self.code(src))
+
 
 if __name__ == "__main__":
     import sys
@@ -376,7 +379,7 @@ if __name__ == "__main__":
     def print_code(code):
         for addr, inst in enumerate(code): print(f"{addr:3}: {inst}")
 
-    def repl():
+    def repl(walk_or_run):
         while True:
             print("\nInput source and enter Ctrl+D (Linux/Mac) or Ctrl+Z (Windows):")
             if (src := sys.stdin.read()) == "":
@@ -384,20 +387,33 @@ if __name__ == "__main__":
             try:
                 expr = toil.ast(src)
                 print("AST:", expr, sep="\n")
-                print("Output:")
-                result = toil.eval(expr)
+                if walk_or_run == "walk":
+                    print("Output:")
+                    result = toil.eval(expr)
+                else:
+                    code = toil.code(src)
+                    print("Code:")
+                    print_code(code)
+                    print("Output:")
+                    result = toil.execute(code)
                 print("Result:", result, sep="\n")
             except AssertionError as e:
                 print("Error:", e, sep="\n")
 
-    def from_file(filename):
-        with open(filename, "r") as f: result = toil.walk(f.read())
+    def from_file(walk_or_run, filename):
+        with open(filename, "r") as f:
+            if walk_or_run == "walk":
+                result = toil.walk(f.read())
+            else:
+                result = toil.run(f.read())
         exit(result if isinstance(result, int) else 255)
 
     match sys.argv:
         case [_]: pass
-        case [_, "--repl"]: repl()
-        case [_, filename]: from_file(filename)
+        case [_, "--repl"]: repl("walk")
+        case [_, "--rcepl"]: repl("run")
+        case [_, "--walk", filename]: from_file("walk", filename)
+        case [_, "--run", filename]: from_file("run", filename)
         case _: assert False, f"Invalid command line: {sys.argv}"
 
     # Example
@@ -418,3 +434,9 @@ if __name__ == "__main__":
     # ->   1: ('halt',)
 
     # toil.compile((2, 3, 4)) # -> Unsupported expression
+
+    print("Intermediate Code Interpreter:")
+    print(toil.run(r""" 2 """)) # -> 2
+    print(toil.run(r""" None """)) # -> None
+    print(toil.run(r""" True """)) # -> True
+    print(toil.run(r""" False """)) # -> False
