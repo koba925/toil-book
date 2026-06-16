@@ -51,6 +51,24 @@ class TestTreeWalkInterpreter:
         assert toil.walk(r""" 02 """) == 2
         assert toil.walk(r""" 23 """) == 23
 
+    def test_identifiers(self):
+        assert toil.walk(r""" None """) is None
+        assert toil.walk(r""" True """) is True
+        assert toil.walk(r""" False """) is False
+
+        with pytest.raises(AssertionError, match="Undefined variable .* a2"):
+            toil.walk(r""" a2 """)
+        with pytest.raises(AssertionError, match="Extra token"):
+            toil.walk(r""" 2a """)
+        with pytest.raises(AssertionError, match="Undefined variable .* _a"):
+            toil.walk(r""" _a """)
+        with pytest.raises(AssertionError, match="Undefined variable .* a_b"):
+            toil.walk(r""" a_b """)
+        with pytest.raises(AssertionError, match="Undefined variable .* True_"):
+            toil.walk(r""" True_ """)
+        with pytest.raises(AssertionError, match="Undefined variable .* true"):
+            toil.walk(r""" true """)
+
     def test_paren(self):
         assert toil.walk(r""" (2 + 3) * 4 """) == 20
         assert toil.walk(r""" 2 * (3 + 4) """) == 14

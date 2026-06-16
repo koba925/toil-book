@@ -1,3 +1,7 @@
+def is_ident_first(c): return c.isalpha() or c == "_"
+def is_ident_rest(c): return c.isalnum() or c == "_"
+def is_ident(s): return is_ident_first(s[0])
+
 class Scanner:
     def __init__(self, src):
         self._src = src
@@ -20,6 +24,7 @@ class Scanner:
                     self._tokens.append("$EOF")
                     break
                 case c if c.isdecimal(): self._number()
+                case c if is_ident_first(c): self._ident()
                 case c if c in "+-*/%()":
                     self._tokens.append(c); self._advance()
                 case invalid:
@@ -30,6 +35,15 @@ class Scanner:
     def _number(self):
         while self._current_char().isdecimal(): self._advance()
         self._tokens.append(int(self._lexeme()))
+
+    def _ident(self):
+        self._advance()
+        while is_ident_rest(self._current_char()): self._advance()
+        match self._lexeme():
+            case "None": self._tokens.append(None)
+            case "True": self._tokens.append(True)
+            case "False": self._tokens.append(False)
+            case ident: self._tokens.append(ident)
 
     def _lexeme(self):
         return self._src[self._start_pos:self._current_pos]
@@ -66,8 +80,9 @@ class Parser:
 
     def _primary(self):
         match self._current_token():
-            case int(): return self._current_and_advance()
+            case None | bool() | int(): return self._current_and_advance()
             case "(": return self._group()
+            case str(name) if is_ident(name): return self._current_and_advance()
             case invalid:
                 assert False, f"Invalid token @ _primary(): {invalid}"
 
@@ -219,19 +234,15 @@ if __name__ == "__main__":
 
     # Example
 
-    print("Paren:")
+    print("None, bool, and identifier:")
 
-    print(toil.ast(r""" (2 + 3) * 4 """))  # -> ('mul', [('add', [2, 3]), 4])
-    print(toil.walk(r""" (2 + 3) * 4 """))  # -> 20
-    print(toil.ast(r""" 2 * (3 + 4) """))  # -> ('mul', [2, ('add', [3, 4])])
-    print(toil.walk(r""" 2 * (3 + 4) """))  # -> 14
+    print(toil.walk(r""" None """))  # -> None
+    print(toil.walk(r""" True """))  # -> True
+    print(toil.walk(r""" False """))  # -> False
 
-    print(toil.walk(r""" (2 + 3) """))  # -> 5
-    print(toil.walk(r""" (2) """))  # -> 2
-    print(toil.walk(r""" (5 - (4 - 2)) * 2 """))  # -> 6
-    print(toil.walk(r""" (2 + 3) * (4 + 5) """))  # -> 45
-
-    # print(toil.walk(r""" 2 + 3) """))  # -> Extra token
-    # print(toil.walk(r""" (+) """))  # -> Invalid token
-    # print(toil.walk(r""" (2 + 3 """))  # -> Expected )
-    # print(toil.walk(r""" () """))  # -> Invalid token
+    # print(toil.walk(r""" a2 """))  # -> Undefined variable @ val(): a2
+    # print(toil.walk(r""" 2a """))  # -> Extra token
+    # print(toil.walk(r""" _a """))  # -> Undefined variable @ val(): _a
+    # print(toil.walk(r""" a_b """))  # -> Undefined variable @ val(): a_b
+    # print(toil.walk(r""" True_ """))  # -> Undefined variable @ val(): True_
+    # print(toil.walk(r""" true """))  # -> Undefined variable @ val(): true
