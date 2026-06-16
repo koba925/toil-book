@@ -20,6 +20,8 @@ class Scanner:
                     self._tokens.append("$EOF")
                     break
                 case c if c.isdecimal(): self._number()
+                case c if c in "+-":
+                    self._tokens.append(c); self._advance()
                 case invalid:
                     assert False, f"Invalid character @ tokenize(): {invalid}"
 
@@ -52,7 +54,16 @@ class Parser:
             f"Extra token @ parse(): {self._current_token()}"
         return expr
 
-    def _expression(self): return self._primary()
+    def _expression(self): return self._add_sub()
+
+    def _add_sub(self):
+        ops = {"+": "add", "-": "sub"}
+        left = self._primary()
+        while type(op := self._current_token()) is str and op in ops:
+            self._current_and_advance()
+            right = self._primary()
+            left = (ops[op], [left, right])
+        return left
 
     def _primary(self):
         match self._current_token():
@@ -189,20 +200,23 @@ if __name__ == "__main__":
 
     # Example
 
-    print("Whitespaces:")
-    print(toil.walk(r""" 2 """))  # -> 2
-    print(toil.walk(r"""
-        2
-    """))  # ->  2
+    print("Addition and subtraction:")
 
-    # print(toil.walk(r""" """))  # -> Invalid token
-    # print(toil.walk(r""" 2 34 """))  # -> Extra token
+    print(toil.ast(r""" 2+3 """))  # -> ('add', [2, 3])
+    print(toil.walk(r""" 2+3 """))  # -> 5
 
-    print("Comment:")
+    print(toil.ast(r""" 5 - 3 """))  # -> ('sub', [5, 3])
+    print(toil.walk(r""" 5 - 3 """))  # -> 2
 
-    print(toil.walk(r""" 2 # Comment """))  # -> 2
-    print(toil.walk(r"""
-        # Comment
-        2
-        # Comment
-    """))  # -> 2
+    print(toil.ast(r""" 2 + 3 + 4 """))  # -> ('add', [('add', [2, 3]), 4])
+    print(toil.walk(r""" 2 + 3 + 4 """))  # -> 9
+
+    print(toil.ast(r""" 9 - 4 - 3 """))  # -> ('sub', [('sub', [9, 4]), 3])
+    print(toil.walk(r""" 9 - 4 - 3 """))  # -> 2
+
+    print(toil.ast(r""" 2 + 3 - 4 """))  # -> ('sub', [('add', [2, 3]), 4])
+    print(toil.walk(r""" 2 + 3 - 4 """))  # -> 1
+
+    # print(toil.walk(r""" 2 + """))  # -> Invalid token
+    # print(toil.walk(r""" 2 - + 3 """))  # -> Invalid token
+    # print(toil.walk(r""" -2 """))  # -> Invalid token
