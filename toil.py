@@ -292,6 +292,23 @@ class Evaluator:
                 assert False, f"Invalid operator @ _op(): {op_val}"
 
 
+class VM:
+    def __init__(self, code):
+        self._code = code
+        self._ip = 0
+        self._stack = []
+
+    def execute(self):
+        while (inst := self._code[self._ip]) != ("halt",):
+            self._ip += 1
+            match inst:
+                case ("const", val): self._stack.append(val)
+                case _:
+                    assert False, f"Invalid instruction @ execute(): {inst}"
+        assert len(self._stack) == 1, f"Invalid stack state @ execute(): {self._stack}"
+        return self._stack.pop()
+
+
 class Interpreter:
     def __init__(self):
         self._env = Environment()
@@ -325,6 +342,9 @@ class Interpreter:
     def walk(self, src):
         return self.eval(self.ast(src))
 
+    def execute(self, code):
+        return VM(code).execute()
+
 
 if __name__ == "__main__":
     import sys
@@ -357,4 +377,12 @@ if __name__ == "__main__":
 
     # Example
 
-    toil.walk(r""" print(2) """)
+    print("Stack machine:")
+    print(toil.execute([('const', 2), ('halt',)])) # -> 2
+    print(toil.execute([('const', None), ('halt',)])) # -> None
+    print(toil.execute([('const', True), ('halt',)])) # -> True
+    print(toil.execute([('const', False), ('halt',)])) # -> False
+
+    # toil.execute([('halt',)]) # -> Invalid stack state
+    # toil.execute([('const', 2), ('const', 3), ('halt',)]) # -> Invalid stack state
+    # toil.execute([('not_op',), ('halt',)]) # -> Invalid instruction
