@@ -20,7 +20,7 @@ class Scanner:
                     self._tokens.append("$EOF")
                     break
                 case c if c.isdecimal(): self._number()
-                case c if c in "+-*/%":
+                case c if c in "+-*/%()":
                     self._tokens.append(c); self._advance()
                 case invalid:
                     assert False, f"Invalid character @ tokenize(): {invalid}"
@@ -67,8 +67,15 @@ class Parser:
     def _primary(self):
         match self._current_token():
             case int(): return self._current_and_advance()
+            case "(": return self._group()
             case invalid:
                 assert False, f"Invalid token @ _primary(): {invalid}"
+
+    def _group(self):
+        self._current_and_advance()
+        expr = self._expression()
+        self._consume(")")
+        return expr
 
     def _binary_left(self, ops, sub_elem):
         left = sub_elem()
@@ -77,6 +84,11 @@ class Parser:
             right = sub_elem()
             left = (ops[op], [left, right])
         return left
+
+    def _consume(self, expected):
+        assert self._current_token() == expected, \
+            f"Expected {expected} @ _consume(): {self._current_token()}"
+        return self._current_and_advance()
 
     def _current_token(self): return self._tokens[self._pos]
 
@@ -207,21 +219,19 @@ if __name__ == "__main__":
 
     # Example
 
-    print("Multiplication, division, and modulo:")
+    print("Paren:")
 
-    print(toil.ast(r""" 2 * 3 """))  # -> ('mul', [2, 3])
-    print(toil.walk(r""" 2 * 3 """))  # -> 6
+    print(toil.ast(r""" (2 + 3) * 4 """))  # -> ('mul', [('add', [2, 3]), 4])
+    print(toil.walk(r""" (2 + 3) * 4 """))  # -> 20
+    print(toil.ast(r""" 2 * (3 + 4) """))  # -> ('mul', [2, ('add', [3, 4])])
+    print(toil.walk(r""" 2 * (3 + 4) """))  # -> 14
 
-    print(toil.ast(r""" 6 / 2 """))  # -> ('div', [6, 2])
-    print(toil.walk(r""" 6 / 2 """))  # -> 3
+    print(toil.walk(r""" (2 + 3) """))  # -> 5
+    print(toil.walk(r""" (2) """))  # -> 2
+    print(toil.walk(r""" (5 - (4 - 2)) * 2 """))  # -> 6
+    print(toil.walk(r""" (2 + 3) * (4 + 5) """))  # -> 45
 
-    print(toil.ast(r""" 7 % 3 """))  # -> ('mod', [7, 3])
-    print(toil.walk(r""" 7 % 3 """))  # -> 1
-
-    print(toil.walk(r""" 2 * 3 * 4 """))  # -> 24
-    print(toil.walk(r""" 24 / 4 / 2 """))  # -> 3
-    print(toil.walk(r""" 4 * 3 / 2 """))  # -> 6
-
-    print(toil.ast(r""" 2 + 3 * 4 """))  # -> ('add', [2, ('mul', [3, 4])])
-    print(toil.walk(r""" 2 + 3 * 4 """))  # -> 14
-    print(toil.walk(r""" 2 * 3 + 4 """))  # -> 10
+    # print(toil.walk(r""" 2 + 3) """))  # -> Extra token
+    # print(toil.walk(r""" (+) """))  # -> Invalid token
+    # print(toil.walk(r""" (2 + 3 """))  # -> Expected )
+    # print(toil.walk(r""" () """))  # -> Invalid token
