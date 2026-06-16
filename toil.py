@@ -29,7 +29,7 @@ class Scanner:
                     self._advance()
                     if self._current_char() == "=": self._advance()
                     self._tokens.append(self._lexeme())
-                case c if c in "+-*/%()<>,":
+                case c if c in "+-*/%()<>,;":
                     self._tokens.append(c); self._advance()
                 case invalid:
                     assert False, f"Invalid character @ tokenize(): {invalid}"
@@ -72,7 +72,14 @@ class Parser:
             f"Extra token @ parse(): {self._current_token()}"
         return expr
 
-    def _expression(self): return self._define_assign()
+    def _expression(self): return self._sequence()
+
+    def _sequence(self):
+        exprs = [self._define_assign()]
+        while self._current_token() == ";":
+            self._current_and_advance()
+            exprs.append(self._define_assign())
+        return exprs[0] if len(exprs) == 1 else ("seq", exprs)
 
     def _define_assign(self):
         return self._binary_right({
@@ -274,25 +281,19 @@ if __name__ == "__main__":
 
     # Example
 
-    print("Function call:")
+    print("Sequence:")
 
-    print(toil.ast(r""" add(2, 3) """))  # -> ('add', [2, 3])
-    print(toil.walk(r""" add(2, 3) """))  # -> 5
+    print(toil.ast(r""" print(2); print(3) """))
+    # -> ('seq', [('print', [2]), ('print', [3])])
+    print(toil.walk(r""" print(2); print(3) """))  # -> 2\n3\nNone
 
-    print(toil.walk(r""" add(2 + 3, add(4, 5)) """))  # -> 14
-    print(toil.walk(r""" add(2, 3) * 4 """)) # -> 20
+    print(toil.ast(r""" 2 + 3; 4 + 5; 6 + 7 """))
+    # -> ('seq', [('add', [2, 3]), ('add', [4, 5]), ('add', [6, 7])])
+    print(toil.walk(r""" 2 + 3; 4 + 5; 6 + 7 """))  # -> 13
 
-    toil.walk(r""" myadd := add """)
-    print(toil.walk(r""" myadd(2, 3) """))  # -> 5
+    print(toil.ast(r""" 2 + 3 """))
+    # -> ('add', [2, 3])
 
-    toil.walk(r""" print() """)  # -> (empty line)
-    toil.walk(r""" print(2) """)  # -> 2
-    toil.walk(r""" print(2, 3) """)  # -> 2 3
-
-    # toil.walk(r""" print( """)  # -> Invalid token
-    # toil.walk(r""" print(2 """)  # -> Expected )
-    # toil.walk(r""" print(2 3) """)  # -> Expected )
-    # toil.walk(r""" print(2,) """)  # -> Invalid token
-    # toil.walk(r""" print(, 3) """)  # -> Invalid token
-    # toil.walk(r""" not_defined_func(2) """)  # -> Undefined variable
-    # toil.walk(r""" 2(3) """)  # -> Invalid operator
+    # toil.walk(r""" 2; """)  # -> Invalid token
+    # toil.walk(r""" ;2 """)  # -> Invalid token
+    # toil.walk(r""" 2;;3 """)  # -> Invalid token

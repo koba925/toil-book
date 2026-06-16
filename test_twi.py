@@ -26,6 +26,19 @@ class TestTreeWalkInterpreter:
             # Comment
         """) == 2
 
+    def test_sequence(self, capsys):
+        assert toil.walk(r""" print(2); print(3) """) is None
+        assert capsys.readouterr().out == "2\n3\n"
+
+        assert toil.walk(r""" 2 + 3; 4 + 5; 6 + 7 """) == 13
+
+        with pytest.raises(AssertionError, match="Invalid token"):
+            toil.walk(r""" 2; """)
+        with pytest.raises(AssertionError, match="Invalid token"):
+            toil.walk(r""" ;2 """)
+        with pytest.raises(AssertionError, match="Invalid token"):
+            toil.walk(r""" 2;;3 """)
+
     def test_define_assign(self):
         assert toil.walk(r""" a := 2 """) == 2
         assert toil.walk(r""" a """) == 2
