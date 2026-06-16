@@ -314,6 +314,8 @@ class Compiler:
                 self._emit("set", name)
             case ("scope", [body_expr]): self._scope(body_expr)
             case ("seq", exprs): self._seq(exprs)
+            case ("if", [cond_expr, then_expr, else_expr]):
+                self._if(cond_expr, then_expr, else_expr)
             case (op, [expr]):
                 self._expression(expr)
                 self._emit(op)
@@ -335,8 +337,26 @@ class Compiler:
             self._emit("pop")
         self._expression(exprs[-1])
 
+    def _if(self, cond_expr, then_expr, else_expr):
+        self._expression(cond_expr)
+        else_jump = self._current_addr()
+        self._emit("jump_if_false", None)
+        self._expression(then_expr)
+        end_jump = self._current_addr()
+        self._emit("jump", None)
+        self._set_operand(else_jump, self._current_addr())
+        self._expression(else_expr)
+        self._set_operand(end_jump, self._current_addr())
+
+    def _set_operand(self, ip, operand):
+        inst = self._code[ip]
+        self._code[ip] = (inst[0], operand)
+
     def _emit(self, *inst):
         self._code.append(inst)
+
+    def _current_addr(self):
+        return len(self._code)
 
 
 class VM:
@@ -361,6 +381,9 @@ class VM:
                 case ("def", name): self._env.define(name, self._stack[-1])
                 case ("set", name): self._env.assign(name, self._stack[-1])
                 case ("get", name): self._stack.append(self._env.val(name))
+                case ("jump", addr): self._ip = addr
+                case ("jump_if_false", addr):
+                    if not self._stack.pop(): self._ip = addr
                 case ("print",):
                     val = print(self._stack.pop()); self._stack.append(None)
                 case ("add",):
@@ -477,41 +500,33 @@ if __name__ == "__main__":
 
     # Example
 
-    print("Assignment and Scope:")
+    print("If:")
 
-    print(toil.ast(r""" a = 3 + 4 """))
-    # -> ('assign', ['a', ('add', [3, 4])])
-    print_code(toil.code(r""" a = 3 + 4 """))
-    # ->   0: ('const', 3)
-    # ->   1: ('const', 4)
-    # ->   2: ('add',)
-    # ->   3: ('set', 'a')
-    # ->   4: ('halt',)
-    print(toil.run(r""" a := 2; a = 3 + 4 """)) # -> 7
-    print(toil.run(r""" a """)) # -> 7
+    print(toil.ast(r""" if 2 == 2 then 3 + 3 else 4 + 4 end """))
+    # -> ('if', [('equal', [2, 2]), ('add', [3, 3]), ('add', [4, 4])])
+    print_code(toil.code(r""" if 2 == 2 then 3 + 3 else 4 + 4 end """))
+    # ->   0: ('const', 2)
+    # ->   1: ('const', 2)
+    # ->   2: ('equal',)
+    # ->   3: ('jump_if_false', 8)
+    # ->   4: ('const', 3)
+    # ->   5: ('const', 3)
+    # ->   6: ('add',)
+    # ->   7: ('jump', 11)
+    # ->   8: ('const', 4)
+    # ->   9: ('const', 4)
+    # ->  10: ('add',)
+    # ->  11: ('halt',)
+    print(toil.run(r""" if 2 == 2 then 3 + 3 else 4 + 4 end """)) # -> 6
+    print(toil.run(r""" if 2 == 3 then 3 + 3 else 4 + 4 end """)) # -> 8
 
-    print(toil.run(r""" a := 2; b := 3; a = b = 4 """)) # -> 4
-    print(toil.run(r""" a """)) # -> 4
-    print(toil.run(r""" b """)) # -> 4
+    print(toil.run(r""" if True then 3 else 4 end * 5 """))  # -> 15
 
-    print(toil.ast(r""" scope a + 3 end """))
-    # -> ('scope', [('add', ['a', 3])])
-    print_code(toil.code(r""" scope a + 3 end """))
-    # ->   0: ('push_env',)
-    # ->   1: ('get', 'a')
-    # ->   2: ('const', 3)
-    # ->   3: ('add',)
-    # ->   4: ('pop_env',)
-    # ->   5: ('halt',)
-    print(toil.run(r""" a := 2; scope a + 3 end """)) # -> 5
-
-    print(toil.run(r""" a := 2; scope scope a + 3 end end """)) # -> 5
-
-    print(toil.run(r""" a := 2; scope a := 3 end """)) # -> 3
-    print(toil.run(r""" a """)) # -> 2
-
-    print(toil.run(r""" a := 2; scope a = 3 end """)) # -> 3
-    print(toil.run(r""" a """)) # -> 3
-
-    # toil.run(r""" scope d = 3 end """)  # -> Undefined variable
-    # toil.run(r""" scope c := 2 end; c """) # -> Undefined variable
+    print(toil.run(r""" if True then if True then 3 else 4 end else 5 end """))
+    # -> 3
+    print(toil.run(r""" if True then if False then 3 else 4 end else 5 end """))
+    # -> 4
+    print(toil.run(r""" if False then 3 else if True then 4 else 5 end end """))
+    # -> 4
+    print(toil.run(r""" if False then 3 else if False then 4 else 5 end end """))
+    # -> 5

@@ -65,6 +65,15 @@ class TestIntermediateCodeInterpreter:
         with pytest.raises(AssertionError, match="Undefined variable"):
             toil.run(r""" scope c := 2 end; c """)
 
+    def test_if(self):
+        assert toil.run(r""" if 2 == 2 then 4 + 5 else 6 + 7 end """) == 9
+        assert toil.run(r""" if 2 == 3 then 4 + 5 else 6 + 7 end """) == 13
+        assert toil.run(r""" if True then 3 else 4 end * 5 """) == 15
+        assert toil.run(r""" if True then if True then 3 else 4 end else 5 end """) == 3
+        assert toil.run(r""" if True then if False then 3 else 4 end else 5 end """) == 4
+        assert toil.run(r""" if False then 3 else if True then 4 else 5 end end """) == 4
+        assert toil.run(r""" if False then 3 else if False then 4 else 5 end end """) == 5
+
     def test_pseudo_func(self, capsys):
         assert toil.run(r""" 2 + 3 """) == 5
         assert toil.run(r""" 2 + 3 * 4 """) == 14
