@@ -42,6 +42,29 @@ class TestIntermediateCodeInterpreter:
         with pytest.raises(Exception, match="Empty sequence"):
             toil.compile(("seq", []))
 
+    def test_assignment_scope(self):
+        assert toil.run(r""" a := 2; a = 3 + 4 """) == 7
+        assert toil.run(r""" a """) == 7
+
+        assert toil.run(r""" a := 2; b := 3; a = b = 4 """) == 4
+        assert toil.run(r""" a """) == 4
+        assert toil.run(r""" b """) == 4
+
+        assert toil.run(r""" a := 2; scope a + 3 end """) == 5
+
+        assert toil.run(r""" a := 2; scope scope a + 3 end end """) == 5
+
+        assert toil.run(r""" a := 2; scope a := 3 end """) == 3
+        assert toil.run(r""" a """) == 2
+
+        assert toil.run(r""" a := 2; scope a = 3 end """) == 3
+        assert toil.run(r""" a """) == 3
+
+        with pytest.raises(AssertionError, match="Undefined variable"):
+            toil.run(r""" scope d = 3 end """)
+        with pytest.raises(AssertionError, match="Undefined variable"):
+            toil.run(r""" scope c := 2 end; c """)
+
     def test_pseudo_func(self, capsys):
         assert toil.run(r""" 2 + 3 """) == 5
         assert toil.run(r""" 2 + 3 * 4 """) == 14

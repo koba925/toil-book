@@ -309,6 +309,10 @@ class Compiler:
             case ("define", [name, expr]):
                 self._expression(expr)
                 self._emit("def", name)
+            case ("assign", [name, expr]):
+                self._expression(expr)
+                self._emit("set", name)
+            case ("scope", [body_expr]): self._scope(body_expr)
             case ("seq", exprs): self._seq(exprs)
             case (op, [expr]):
                 self._expression(expr)
@@ -318,6 +322,11 @@ class Compiler:
                 self._expression(right_expr)
                 self._emit(op)
             case _: assert False, f"Unsupported expression @ compile(): {expr}"
+
+    def _scope(self, body_expr):
+        self._emit("enter_scope")
+        self._expression(body_expr)
+        self._emit("leave_scope")
 
     def _seq(self, exprs):
         assert len(exprs) > 0, f"Empty sequence @ compile(): {exprs}"
@@ -336,6 +345,7 @@ class VM:
         self._env = env
         self._ip = 0
         self._stack = []
+        self._ctrl_stack = []
 
     def execute(self):
         while (inst := self._code[self._ip]) != ("halt",):
@@ -343,7 +353,13 @@ class VM:
             match inst:
                 case ("const", val): self._stack.append(val)
                 case ("pop",): self._stack.pop()
+                case ("enter_scope",):
+                    self._ctrl_stack.append(("scope", self._env))
+                    self._env = Environment(self._env)
+                case ("leave_scope",):
+                    _, self._env = self._ctrl_stack.pop()
                 case ("def", name): self._env.define(name, self._stack[-1])
+                case ("set", name): self._env.assign(name, self._stack[-1])
                 case ("get", name): self._stack.append(self._env.val(name))
                 case ("print",):
                     val = print(self._stack.pop()); self._stack.append(None)
@@ -361,7 +377,10 @@ class VM:
                     self._stack.append(l < r)
                 case _:
                     assert False, f"Invalid instruction @ execute(): {inst}"
-        assert len(self._stack) == 1, f"Invalid stack state @ execute(): {self._stack}"
+        assert len(self._ctrl_stack) == 0, \
+            f"Invalid control stack state @ execute(): {self._ctrl_stack}"
+        assert len(self._stack) == 1, \
+            f"Invalid stack state @ execute(): {self._stack}"
         return self._stack.pop()
 
 
@@ -458,37 +477,41 @@ if __name__ == "__main__":
 
     # Example
 
-    print("Variable and definition:")
+    print("Assignment and Scope:")
 
-    print(toil.ast(r""" a := 2 """))
-    # -> ('define', ['a', 2])
-    print_code(toil.code(r""" a := 2 """))
-    # ->   0: ('const', 2)
-    # ->   1: ('def', 'a')
-    # ->   2: ('halt',)
-    print(toil.run(r""" a := 2 """)) # -> 2
+    print(toil.ast(r""" a = 3 + 4 """))
+    # -> ('assign', ['a', ('add', [3, 4])])
+    print_code(toil.code(r""" a = 3 + 4 """))
+    # ->   0: ('const', 3)
+    # ->   1: ('const', 4)
+    # ->   2: ('add',)
+    # ->   3: ('set', 'a')
+    # ->   4: ('halt',)
+    print(toil.run(r""" a := 2; a = 3 + 4 """)) # -> 7
+    print(toil.run(r""" a """)) # -> 7
 
-    print(toil.ast(r""" a """))
-    # -> a
-    print_code(toil.code(r""" a """))
-    # ->   0: ('get', 'a')
-    # ->   1: ('halt',)
+    print(toil.run(r""" a := 2; b := 3; a = b = 4 """)) # -> 4
+    print(toil.run(r""" a """)) # -> 4
+    print(toil.run(r""" b """)) # -> 4
+
+    print(toil.ast(r""" scope a + 3 end """))
+    # -> ('scope', [('add', ['a', 3])])
+    print_code(toil.code(r""" scope a + 3 end """))
+    # ->   0: ('push_env',)
+    # ->   1: ('get', 'a')
+    # ->   2: ('const', 3)
+    # ->   3: ('add',)
+    # ->   4: ('pop_env',)
+    # ->   5: ('halt',)
+    print(toil.run(r""" a := 2; scope a + 3 end """)) # -> 5
+
+    print(toil.run(r""" a := 2; scope scope a + 3 end end """)) # -> 5
+
+    print(toil.run(r""" a := 2; scope a := 3 end """)) # -> 3
     print(toil.run(r""" a """)) # -> 2
 
-    print(toil.ast(r""" a := b := 2 == 2 """))
-    # -> ('define', ['a', ('define', ['b', ('equal', [2, 2])])])
-    print_code(toil.code(r""" a := b := 2 == 2  """))
-    # ->   0: ('const', 2)
-    # ->   1: ('const', 2)
-    # ->   2: ('equal',)
-    # ->   3: ('def', 'b')
-    # ->   4: ('def', 'a')
-    # ->   5: ('halt',)
-    print(toil.run(r""" a := b := 2 == 2  """)) # -> True
-    print(toil.run(r""" a """)) # -> True
-    print(toil.run(r""" b """)) # -> True
+    print(toil.run(r""" a := 2; scope a = 3 end """)) # -> 3
+    print(toil.run(r""" a """)) # -> 3
 
-    print(toil.run(r""" a := 2; b := 3; a * b """)) # -> 6
-
-    # toil.run(r""" c """) # -> Undefined variable
-
+    # toil.run(r""" scope d = 3 end """)  # -> Undefined variable
+    # toil.run(r""" scope c := 2 end; c """) # -> Undefined variable
