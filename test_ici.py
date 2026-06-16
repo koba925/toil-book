@@ -13,6 +13,15 @@ class TestIntermediateCodeInterpreter:
         assert toil.run(r""" True """) is True
         assert toil.run(r""" False """) is False
 
+    def test_sequence(self, capsys):
+        assert toil.run(r""" 2; 3; 4 """) == 4
+
+        assert toil.run(r""" print(2); print(3) """) is None
+        assert capsys.readouterr().out == "2\n3\n"
+
+        with pytest.raises(Exception, match="Empty sequence"):
+            toil.compile(("seq", []))
+
     def test_pseudo_func(self, capsys):
         assert toil.run(r""" 2 + 3 """) == 5
         assert toil.run(r""" 2 + 3 * 4 """) == 14

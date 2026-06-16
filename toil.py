@@ -305,6 +305,7 @@ class Compiler:
     def _expression(self, expr):
         match expr:
             case None | bool() | int(): self._emit("const", expr)
+            case ("seq", exprs): self._seq(exprs)
             case (op, [expr]):
                 self._expression(expr)
                 self._emit(op)
@@ -313,6 +314,13 @@ class Compiler:
                 self._expression(right_expr)
                 self._emit(op)
             case _: assert False, f"Unsupported expression @ compile(): {expr}"
+
+    def _seq(self, exprs):
+        assert len(exprs) > 0, f"Empty sequence @ compile(): {exprs}"
+        for expr in exprs[:-1]:
+            self._expression(expr)
+            self._emit("pop")
+        self._expression(exprs[-1])
 
     def _emit(self, *inst):
         self._code.append(inst)
@@ -329,6 +337,7 @@ class VM:
             self._ip += 1
             match inst:
                 case ("const", val): self._stack.append(val)
+                case ("pop",): self._stack.pop()
                 case ("print",):
                     val = print(self._stack.pop()); self._stack.append(None)
                 case ("add",):
@@ -442,40 +451,28 @@ if __name__ == "__main__":
 
     # Example
 
-    print("Pseudo functions:")
+    print("Sequence:")
 
-    print(toil.ast(r""" 2 + 3 """))
-    # -> ('add', [2, 3])
-    print_code(toil.code(r""" 2 + 3 """))
-    # ->  0: ('const', 2)
-    # ->  1: ('const', 3)
-    # ->  2: ('add',)
-    # ->  3: ('halt',)
-    print(toil.run(r""" 2 + 3 """)) # -> 5
-
-    print(toil.ast(r""" 2 + 3 * 4 """))
-    # -> ('add', [2, ('mul', [3, 4])])
-    print_code(toil.code(r""" 2 + 3 * 4"""))
+    print(toil.ast(r""" 2; 3; 4 """))
+    # -> ('seq', [2, 3, 4])
+    print_code(toil.code(r""" 2; 3; 4 """))
     # ->   0: ('const', 2)
-    # ->   1: ('const', 3)
-    # ->   2: ('const', 4)
-    # ->   3: ('mul',)
-    # ->   4: ('add',)
+    # ->   1: ('pop',)
+    # ->   2: ('const', 3)
+    # ->   3: ('pop',)
+    # ->   4: ('const', 4)
     # ->   5: ('halt',)
-    print(toil.run(r""" 2 + 3 * 4 """)) # -> 14
+    print(toil.run(r""" 2; 3; 4 """)) # -> 4
 
-    print(toil.ast(r""" (2 + 3) * 4 """))
-    # -> ('mul', [('add', [2, 3]), 4])
-    print_code(toil.code(r""" (2 + 3) * 4"""))
+    print(toil.ast(r""" print(2); print(3) """))
+    # -> ('seq', [('print', [2]), ('print', [3])])
+    print_code(toil.code(r""" print(2); print(3) """))
     # ->   0: ('const', 2)
-    # ->   1: ('const', 3)
-    # ->   2: ('add',)
-    # ->   3: ('const', 4)
-    # ->   4: ('mul',)
+    # ->   1: ('print',)
+    # ->   2: ('pop',)
+    # ->   3: ('const', 3)
+    # ->   4: ('print',)
     # ->   5: ('halt',)
-    print(toil.run(r""" (2 + 3) * 4 """)) # -> 20
+    print(toil.run(r""" print(2); print(3) """)) # -> 2\n3\nNone
 
-    print(toil.run(r""" 2 + 3 == 2 * 3 """)) # -> False
-    print(toil.run(r""" 2 + 3 < 2 * 3 """)) # -> True
-    print(toil.run(r""" print(2 + 3) """)) # -> 5\nNone
-
+    # toil.compile(("seq", [])) # -> Empty sequence
