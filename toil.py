@@ -25,7 +25,7 @@ class Scanner:
                     break
                 case c if c.isdecimal(): self._number()
                 case c if is_ident_first(c): self._ident()
-                case "=":
+                case c if c in "=:":
                     self._advance()
                     if self._current_char() == "=": self._advance()
                     self._tokens.append(self._lexeme())
@@ -72,7 +72,12 @@ class Parser:
             f"Extra token @ parse(): {self._current_token()}"
         return expr
 
-    def _expression(self): return self._comparison()
+    def _expression(self): return self._define_assign()
+
+    def _define_assign(self):
+        return self._binary_right({
+            ":=": "define", "=": "assign"
+        }, self._comparison)
 
     def _comparison(self):
         return self._binary_left({
@@ -107,6 +112,15 @@ class Parser:
             self._current_and_advance()
             right = sub_elem()
             left = (ops[op], [left, right])
+        return left
+
+    def _binary_right(self, ops, sub_elem):
+        left = sub_elem()
+        if type(self._current_token()) is str and \
+                (op := self._current_token()) in ops:
+            self._current_and_advance()
+            right = self._binary_right(ops, sub_elem)
+            return (ops[op], [left, right])
         return left
 
     def _consume(self, expected):
@@ -243,29 +257,29 @@ if __name__ == "__main__":
 
     # Example
 
-    print("Comparison:")
+    print("Definition and assignment:")
 
-    print(toil.walk(r""" 2 == 2 """))  # -> True
-    print(toil.walk(r""" 2 == 3 """))  # -> False
-    print(toil.walk(r""" None == None """))  # -> True
-    print(toil.walk(r""" None == True """))  # -> False
-    print(toil.walk(r""" True == True """))  # -> True
-    print(toil.walk(r""" True == False """))  # -> False
-    print(toil.walk(r""" False == False """))  # -> True
+    print(toil.walk(r""" a := 2 """))  # -> 2
+    print(toil.walk(r""" a """))  # -> 2
+    print(toil.walk(r""" a = 3 """))  # -> 3
+    print(toil.walk(r""" a """))  # -> 3
 
-    print(toil.walk(r""" 2 < 2  """))  # -> False
-    print(toil.walk(r""" 2 < 3  """))  # -> True
-    print(toil.walk(r""" 2 > 2  """))  # -> False
-    print(toil.walk(r""" 3 > 2  """))  # -> True
 
-    print(toil.ast(r""" 2 == 2 == 2 """))  # -> ('equal', [('equal', [2, 2]), 2])
-    print(toil.walk(r""" 2 == 2 == 2 """))  # -> False
-    print(toil.ast(r""" 2 == 2 == True """))  # -> ('equal', [('equal', [2, 2]), True])
-    print(toil.walk(r""" 2 == 2 == True """))  # -> True
+    print(toil.ast(r""" b := c := 4 """))  # -> ('define', ['b', ('define', ['c', 4])])
+    print(toil.walk(r""" b := c := 4 """))  # -> 4
+    print(toil.walk(r""" b """))  # -> 4
+    print(toil.walk(r""" c """))  # -> 4
 
-    print(toil.ast(r""" 2 + 3 == 5 """))  # -> ('equal', [('add', [2, 3]), 5])
-    print(toil.walk(r""" 2 + 3 == 5 """))  # -> True
+    print(toil.ast(r""" b = c = 5 """))  # -> ('assign', ['b', ('assign', ['c', 5])])
+    print(toil.walk(r""" b = c = 5 """))  # -> 5
+    print(toil.walk(r""" b """))  # -> 5
+    print(toil.walk(r""" c """))  # -> 5
 
-    # print(toil.walk(r""" 2 == == 2 """))  # -> Invalid token
-    # print(toil.walk(r""" == 2 """))  # -> Invalid token
-    # print(toil.walk(r""" 2 == """))  # -> Invalid token
+    print(toil.ast(r""" a := 2 == 2 """))  # -> ('define', ['a', ('equal', [2, 2])])
+    print(toil.walk(r""" a := 2 == 2 """))  # -> True
+    print(toil.walk(r""" a """))  # -> True
+
+    # toil.walk(r""" not_defined = 3 """)  # -> Undefined variable
+    # toil.walk(r""" a = = 3 """)  # -> Invalid token
+    # toil.walk(r""" a = """)  # -> Invalid token
+    # toil.walk(r""" = a """)  # -> Invalid token
