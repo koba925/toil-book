@@ -13,21 +13,6 @@ class TestEvaluator:
         with pytest.raises(AssertionError, match="Unexpected expression"):
             toil.eval([])
 
-    def test_pseudo_func(self, capsys):
-        assert toil.eval(("add", [2, 3])) == 5
-
-        assert toil.eval(("equal", [2, 2])) == True
-        assert toil.eval(("equal", [2, 3])) == False
-
-        assert toil.eval(("print", [2])) == None
-        assert capsys.readouterr().out == "2\n"
-
-        toil.eval(("print", [("equal", [("add", [2, 3]), 5])]))
-        assert capsys.readouterr().out == "True\n"
-
-        with pytest.raises(AssertionError, match="Unexpected expression"):
-            toil.eval(("sub", [3, 2]))
-
     def test_sequence(self, capsys):
         assert toil.eval(("seq", [])) is None
         assert toil.eval(("seq", [("add", [2, 3])])) == 5
@@ -85,6 +70,38 @@ class TestEvaluator:
 
         with pytest.raises(AssertionError, match="Undefined variable"):
             toil.eval("b")
+
+    def test_builtins(self, capsys):
+        assert toil.eval(("add", [2, 3])) == 5
+        assert toil.eval(("sub", [3, 2])) == 1
+        assert toil.eval(("mul", [2, 3])) == 6
+        assert toil.eval(("div", [6, 3])) == 2
+        assert toil.eval(("mod", [7, 3])) == 1
+
+        assert toil.eval(("equal", [2, 2])) is True
+        assert toil.eval(("equal", [2, 3])) is False
+
+        assert toil.eval(("less", [2, 2])) is False
+        assert toil.eval(("less", [2, 3])) is True
+
+        assert toil.eval(("greater", [2, 2])) is False
+        assert toil.eval(("greater", [3, 2])) is True
+
+        assert toil.eval(("print", [2])) is None
+        assert capsys.readouterr().out == "2\n"
+
+        assert toil.eval(("print", [2, 3])) is None
+        assert capsys.readouterr().out == "2 3\n"
+
+        assert toil.eval(("print", [("equal", [("add", [2, 3]), 5])])) is None
+        assert capsys.readouterr().out == "True\n"
+
+        assert callable(toil.eval("add"))
+        toil.eval(("define", ["myadd", "add"]))
+        assert toil.eval(("myadd", [2, 3])) == 5
+
+        with pytest.raises(AssertionError, match=r"Undefined variable @ val\(\): not_defined"):
+            toil.eval(("not_defined", []))
 
 
 if __name__ == "__main__":
