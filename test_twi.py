@@ -192,6 +192,23 @@ class TestTreeWalkInterpreter:
         with pytest.raises(AssertionError, match="Invalid token"):
             toil.walk(r""" () """)
 
+    def test_scope(self):
+        assert toil.walk(r""" a := 2; scope a end """) == 2
+        assert toil.walk(r""" a := 2; scope scope a end end """) == 2
+
+        assert toil.walk(r""" a := 2; scope a := 3 end """) == 3
+        assert toil.walk(r""" a """) == 2
+
+        assert toil.walk(r""" a := 2; scope a = 3 end """) == 3
+        assert toil.walk(r""" a """) == 3
+
+        with pytest.raises(AssertionError, match="Undefined variable"):
+            toil.walk(r""" a := 2; scope d = 3 end """)
+        with pytest.raises(AssertionError, match="Expected end"):
+            toil.walk(r""" scope 2 """)
+        with pytest.raises(AssertionError, match="Expected end"):
+            toil.walk(r""" scope end """)
+
     def test_empty_source(self):
         with pytest.raises(AssertionError, match="Invalid token"):
             toil.walk(r"""""")

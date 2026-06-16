@@ -111,6 +111,7 @@ class Parser:
         match self._current_token():
             case None | bool() | int(): return self._current_and_advance()
             case "(": return self._group()
+            case "scope": return self._scope()
             case str(name) if is_ident(name): return self._current_and_advance()
             case invalid:
                 assert False, f"Invalid token @ _primary(): {invalid}"
@@ -120,6 +121,12 @@ class Parser:
         expr = self._expression()
         self._consume(")")
         return expr
+
+    def _scope(self):
+        self._current_and_advance()
+        body_expr = self._expression()
+        self._consume("end")
+        return ("scope", [body_expr])
 
     def _binary_left(self, ops, sub_elem):
         left = sub_elem()
@@ -281,19 +288,18 @@ if __name__ == "__main__":
 
     # Example
 
-    print("Sequence:")
+    print("Scope:")
 
-    print(toil.ast(r""" print(2); print(3) """))
-    # -> ('seq', [('print', [2]), ('print', [3])])
-    print(toil.walk(r""" print(2); print(3) """))  # -> 2\n3\nNone
+    print(toil.walk(r""" a := 2; scope a end """)) # -> 2
+    print(toil.walk(r""" a := 2; scope scope a end end """)) # -> 2
 
-    print(toil.ast(r""" 2 + 3; 4 + 5; 6 + 7 """))
-    # -> ('seq', [('add', [2, 3]), ('add', [4, 5]), ('add', [6, 7])])
-    print(toil.walk(r""" 2 + 3; 4 + 5; 6 + 7 """))  # -> 13
+    print(toil.walk(r""" a := 2; scope a := 3 end """)) # -> 3
+    print(toil.walk(r""" a """)) # -> 2
 
-    print(toil.ast(r""" 2 + 3 """))
-    # -> ('add', [2, 3])
+    print(toil.walk(r""" a := 2; scope a = 3 end """)) # -> 3
+    print(toil.walk(r""" a """)) # -> 3
 
-    # toil.walk(r""" 2; """)  # -> Invalid token
-    # toil.walk(r""" ;2 """)  # -> Invalid token
-    # toil.walk(r""" 2;;3 """)  # -> Invalid token
+    # toil.walk(r""" a := 2; scope d = 3 end """)  # -> Undefined variable
+    # toil.walk(r""" scope 2 """)  # -> Expected end
+    # toil.walk(r""" scope end """)  # -> Expected end
+
