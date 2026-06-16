@@ -13,6 +13,21 @@ class TestEvaluator:
         with pytest.raises(AssertionError, match="Unexpected expression"):
             toil.eval([])
 
+    def test_pseudo_func(self, capsys):
+        assert toil.eval(("add", [2, 3])) == 5
+
+        assert toil.eval(("equal", [2, 2])) == True
+        assert toil.eval(("equal", [2, 3])) == False
+
+        assert toil.eval(("print", [2])) == None
+        assert capsys.readouterr().out == "2\n"
+
+        toil.eval(("print", [("equal", [("add", [2, 3]), 5])]))
+        assert capsys.readouterr().out == "True\n"
+
+        with pytest.raises(AssertionError, match="Unexpected expression"):
+            toil.eval(("sub", [3, 2]))
+
 
 if __name__ == "__main__":
     pytest.main([__file__])
