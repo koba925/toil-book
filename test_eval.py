@@ -51,6 +51,41 @@ class TestEvaluator:
         assert toil.eval(("define", ["a", 6])) == 6
         assert toil.eval("a") == 6
 
+    def test_scope_and_assign(self, capsys):
+        toil.eval(("define", ["a", 2]))
+        assert toil.eval(("assign", ["a", 3])) == 3
+        assert toil.eval("a") == 3
+
+        with pytest.raises(AssertionError, match="Undefined variable"):
+            toil.eval(("assign", ["b", 2]))
+
+        assert toil.eval(("scope", ["a"])) == 3
+
+        toil.eval(("scope", [("seq", [
+            ("define", ["a", 4]),
+            ("print", ["a"])
+        ])]))
+        assert capsys.readouterr().out == "4\n"
+
+        assert toil.eval("a") == 3
+
+        toil.eval(("scope", [("seq", [
+            ("assign", ["a", 4]),
+            ("print", ["a"])
+        ])]))
+        assert capsys.readouterr().out == "4\n"
+
+        assert toil.eval("a") == 4
+
+        toil.eval(("scope", [("seq", [
+            ("define", ["b", 2]),
+            ("print", ["b"])
+        ])]))
+        assert capsys.readouterr().out == "2\n"
+
+        with pytest.raises(AssertionError, match="Undefined variable"):
+            toil.eval("b")
+
 
 if __name__ == "__main__":
     pytest.main([__file__])

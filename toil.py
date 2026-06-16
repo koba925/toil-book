@@ -1,13 +1,27 @@
 class Environment:
-    def __init__(self):
+    def __init__(self, parent=None):
+        self._parent = parent
         self._vars = {}
 
     def define(self, name, val):
         self._vars[name] = val
         return val
 
+    def assign(self, name, val):
+        if name in self._vars:
+            self._vars[name] = val
+            return val
+        elif self._parent:
+            return self._parent.assign(name, val)
+        else:
+            assert False, f"Undefined variable @ assign(): {name}"
+
     def val(self, name):
-        return self._vars[name]
+        if name in self._vars: return self._vars[name]
+        elif self._parent:
+            return self._parent.val(name)
+        else:
+            assert False, f"Undefined variable @ val(): {name}"
 
 
 class Evaluator:
@@ -15,8 +29,12 @@ class Evaluator:
         match expr:
             case None | bool() | int(): return expr
             case str(name): return env.val(name)
+            case ("scope", [body_expr]):
+                return self.eval(body_expr, Environment(env))
             case ("define", [name, expr]):
                 return env.define(name, self.eval(expr, env))
+            case ("assign", [name, expr]):
+                return env.assign(name, self.eval(expr, env))
             case ("seq", exprs): return self._seq(exprs, env)
             case ("if", [cond_expr, then_expr, else_expr]):
                 return self._if(cond_expr, then_expr, else_expr, env)
@@ -52,20 +70,43 @@ if __name__ == "__main__":
 
     # Example
 
-    print("Variable:")
+    print("Scope and assignment:")
 
-    print(toil.eval(("define", ["a", ("add", [2, 3])])))
-    # -> 5
+    toil.eval(("define", ["a", 2]))
+    print(toil.eval(("assign", ["a", 3])))
+    # -> 3
+    print(toil.eval("a"))
+    # -> 3
+
+    # print(toil.eval(("assign", ["b", 2])))
+    # -> Undefined variable
+
+    print(toil.eval(("scope", ["a"])))
+    # -> 3
+
+    toil.eval(("scope", [("seq", [
+        ("define", ["a", 4]),
+        ("print", ["a"])
+    ])]))
+    # -> 4
 
     print(toil.eval("a"))
-    # -> 5
+    # -> 3
 
-    print(toil.eval(("if", [("equal", ["a", 5]), 2, 3])))
+    toil.eval(("scope", [("seq", [
+        ("assign", ["a", 4]),
+        ("print", ["a"])
+    ])]))
+    # -> 4
+
+    print(toil.eval("a"))
+    # -> 4
+
+    toil.eval(("scope", [("seq", [
+        ("define", ["b", 2]),
+        ("print", ["b"])
+    ])]))
     # -> 2
 
-    print(toil.eval(("define", ["a", 6])))
-    # -> 6
-
-    print(toil.eval("a"))
-    # -> 6
-
+    # print(toil.eval("b"))
+    # -> Undefined variable
