@@ -93,15 +93,45 @@ class TestIntermediateCodeInterpreter:
 
         assert toil.run(r""" while False do 1/0 end """) is None
 
-    def test_pseudo_func(self, capsys):
+    def test_builtins(self, capsys):
+        assert toil.run(r""" add(2, 3) """) == 5
+
         assert toil.run(r""" 2 + 3 """) == 5
+        assert toil.run(r""" 3 - 2 """) == 1
+        assert toil.run(r""" 2 * 3 """) == 6
+        assert toil.run(r""" 6 / 3 """) == 2
+        assert toil.run(r""" 7 % 3 """) == 1
+
         assert toil.run(r""" 2 + 3 * 4 """) == 14
         assert toil.run(r""" (2 + 3) * 4 """) == 20
         assert toil.run(r""" 2 + 3 == 2 * 3 """) is False
         assert toil.run(r""" 2 + 3 < 2 * 3 """) is True
 
-        assert toil.run(r""" print(2 + 3) """) is None
-        assert capsys.readouterr().out == "5\n"
+        assert toil.run(r""" 2 == 2 """) is True
+        assert toil.run(r""" 2 == 3 """) is False
+
+        assert toil.run(r""" 2 < 2 """) is False
+        assert toil.run(r""" 2 < 3 """) is True
+
+        assert toil.run(r""" 2 > 2 """) is False
+        assert toil.run(r""" 3 > 2 """) is True
+
+        assert toil.run(r""" print() """) is None
+        assert capsys.readouterr().out == "\n"
+
+        assert toil.run(r""" print(2) """) is None
+        assert capsys.readouterr().out == "2\n"
+
+        assert toil.run(r""" print(2, 3) """) is None
+        assert capsys.readouterr().out == "2 3\n"
+
+        assert toil.run(r""" print(2 + 3 == 5) """) is None
+        assert capsys.readouterr().out == "True\n"
+
+        assert toil.run(r""" myadd := add; myadd(2, 3) """) == 5
+
+        with pytest.raises(AssertionError, match="Undefined variable"):
+            toil.run(r""" not_defined() """)
 
     def test_invalid_expression(self):
         with pytest.raises(Exception, match="Invalid stack state"):
