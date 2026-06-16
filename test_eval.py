@@ -38,6 +38,12 @@ class TestEvaluator:
         assert toil.eval(("seq", [("print", [2]), ("seq", [("print", [3]), 4])])) == 4
         assert capsys.readouterr().out == "2\n3\n"
 
+    def test_if(self):
+        assert toil.eval(("if", [("equal", [2, 2]), 3, 4])) == 3
+        assert toil.eval(("if", [("equal", [2, 3]), 4, 5])) == 5
+        assert toil.eval(("if", [True, ("seq", [2, 3]), 4])) == 3
+        assert toil.eval(("if", [False, 2, ("if", [True, 3, 4])])) == 3
+
 
 if __name__ == "__main__":
     pytest.main([__file__])
