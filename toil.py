@@ -25,7 +25,11 @@ class Scanner:
                     break
                 case c if c.isdecimal(): self._number()
                 case c if is_ident_first(c): self._ident()
-                case c if c in "+-*/%()":
+                case "=":
+                    self._advance()
+                    if self._current_char() == "=": self._advance()
+                    self._tokens.append(self._lexeme())
+                case c if c in "+-*/%()<>":
                     self._tokens.append(c); self._advance()
                 case invalid:
                     assert False, f"Invalid character @ tokenize(): {invalid}"
@@ -68,7 +72,12 @@ class Parser:
             f"Extra token @ parse(): {self._current_token()}"
         return expr
 
-    def _expression(self): return self._add_sub()
+    def _expression(self): return self._comparison()
+
+    def _comparison(self):
+        return self._binary_left({
+            "==": "equal", "<": "less", ">": "greater"
+        }, self._add_sub)
 
     def _add_sub(self):
         return self._binary_left({"+": "add", "-": "sub"}, self._mul_div_mod)
@@ -234,15 +243,29 @@ if __name__ == "__main__":
 
     # Example
 
-    print("None, bool, and identifier:")
+    print("Comparison:")
 
-    print(toil.walk(r""" None """))  # -> None
-    print(toil.walk(r""" True """))  # -> True
-    print(toil.walk(r""" False """))  # -> False
+    print(toil.walk(r""" 2 == 2 """))  # -> True
+    print(toil.walk(r""" 2 == 3 """))  # -> False
+    print(toil.walk(r""" None == None """))  # -> True
+    print(toil.walk(r""" None == True """))  # -> False
+    print(toil.walk(r""" True == True """))  # -> True
+    print(toil.walk(r""" True == False """))  # -> False
+    print(toil.walk(r""" False == False """))  # -> True
 
-    # print(toil.walk(r""" a2 """))  # -> Undefined variable @ val(): a2
-    # print(toil.walk(r""" 2a """))  # -> Extra token
-    # print(toil.walk(r""" _a """))  # -> Undefined variable @ val(): _a
-    # print(toil.walk(r""" a_b """))  # -> Undefined variable @ val(): a_b
-    # print(toil.walk(r""" True_ """))  # -> Undefined variable @ val(): True_
-    # print(toil.walk(r""" true """))  # -> Undefined variable @ val(): true
+    print(toil.walk(r""" 2 < 2  """))  # -> False
+    print(toil.walk(r""" 2 < 3  """))  # -> True
+    print(toil.walk(r""" 2 > 2  """))  # -> False
+    print(toil.walk(r""" 3 > 2  """))  # -> True
+
+    print(toil.ast(r""" 2 == 2 == 2 """))  # -> ('equal', [('equal', [2, 2]), 2])
+    print(toil.walk(r""" 2 == 2 == 2 """))  # -> False
+    print(toil.ast(r""" 2 == 2 == True """))  # -> ('equal', [('equal', [2, 2]), True])
+    print(toil.walk(r""" 2 == 2 == True """))  # -> True
+
+    print(toil.ast(r""" 2 + 3 == 5 """))  # -> ('equal', [('add', [2, 3]), 5])
+    print(toil.walk(r""" 2 + 3 == 5 """))  # -> True
+
+    # print(toil.walk(r""" 2 == == 2 """))  # -> Invalid token
+    # print(toil.walk(r""" == 2 """))  # -> Invalid token
+    # print(toil.walk(r""" 2 == """))  # -> Invalid token
