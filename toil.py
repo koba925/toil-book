@@ -29,7 +29,7 @@ class Scanner:
                     self._advance()
                     if self._current_char() == "=": self._advance()
                     self._tokens.append(self._lexeme())
-                case c if c in "+-*/%()<>":
+                case c if c in "+-*/%()<>,":
                     self._tokens.append(c); self._advance()
                 case invalid:
                     assert False, f"Invalid character @ tokenize(): {invalid}"
@@ -90,7 +90,15 @@ class Parser:
     def _mul_div_mod(self):
         return self._binary_left({
             "*": "mul", "/": "div", "%": "mod"
-        }, self._primary)
+        }, self._call)
+
+    def _call(self):
+        target = self._primary()
+        while self._current_token() == "(":
+            self._current_and_advance()
+            target = (target, self._comma_separated_exprs(")"))
+            self._consume(")")
+        return target
 
     def _primary(self):
         match self._current_token():
@@ -122,6 +130,15 @@ class Parser:
             right = self._binary_right(ops, sub_elem)
             return (ops[op], [left, right])
         return left
+
+    def _comma_separated_exprs(self, terminator):
+        cse = []
+        if self._current_token() != terminator:
+            cse.append(self._expression())
+            while self._current_token() == ",":
+                self._current_and_advance()
+                cse.append(self._expression())
+        return cse
 
     def _consume(self, expected):
         assert self._current_token() == expected, \
@@ -257,29 +274,25 @@ if __name__ == "__main__":
 
     # Example
 
-    print("Definition and assignment:")
+    print("Function call:")
 
-    print(toil.walk(r""" a := 2 """))  # -> 2
-    print(toil.walk(r""" a """))  # -> 2
-    print(toil.walk(r""" a = 3 """))  # -> 3
-    print(toil.walk(r""" a """))  # -> 3
+    print(toil.ast(r""" add(2, 3) """))  # -> ('add', [2, 3])
+    print(toil.walk(r""" add(2, 3) """))  # -> 5
 
+    print(toil.walk(r""" add(2 + 3, add(4, 5)) """))  # -> 14
+    print(toil.walk(r""" add(2, 3) * 4 """)) # -> 20
 
-    print(toil.ast(r""" b := c := 4 """))  # -> ('define', ['b', ('define', ['c', 4])])
-    print(toil.walk(r""" b := c := 4 """))  # -> 4
-    print(toil.walk(r""" b """))  # -> 4
-    print(toil.walk(r""" c """))  # -> 4
+    toil.walk(r""" myadd := add """)
+    print(toil.walk(r""" myadd(2, 3) """))  # -> 5
 
-    print(toil.ast(r""" b = c = 5 """))  # -> ('assign', ['b', ('assign', ['c', 5])])
-    print(toil.walk(r""" b = c = 5 """))  # -> 5
-    print(toil.walk(r""" b """))  # -> 5
-    print(toil.walk(r""" c """))  # -> 5
+    toil.walk(r""" print() """)  # -> (empty line)
+    toil.walk(r""" print(2) """)  # -> 2
+    toil.walk(r""" print(2, 3) """)  # -> 2 3
 
-    print(toil.ast(r""" a := 2 == 2 """))  # -> ('define', ['a', ('equal', [2, 2])])
-    print(toil.walk(r""" a := 2 == 2 """))  # -> True
-    print(toil.walk(r""" a """))  # -> True
-
-    # toil.walk(r""" not_defined = 3 """)  # -> Undefined variable
-    # toil.walk(r""" a = = 3 """)  # -> Invalid token
-    # toil.walk(r""" a = """)  # -> Invalid token
-    # toil.walk(r""" = a """)  # -> Invalid token
+    # toil.walk(r""" print( """)  # -> Invalid token
+    # toil.walk(r""" print(2 """)  # -> Expected )
+    # toil.walk(r""" print(2 3) """)  # -> Expected )
+    # toil.walk(r""" print(2,) """)  # -> Invalid token
+    # toil.walk(r""" print(, 3) """)  # -> Invalid token
+    # toil.walk(r""" not_defined_func(2) """)  # -> Undefined variable
+    # toil.walk(r""" 2(3) """)  # -> Invalid operator
