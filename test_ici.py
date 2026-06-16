@@ -74,6 +74,25 @@ class TestIntermediateCodeInterpreter:
         assert toil.run(r""" if False then 3 else if True then 4 else 5 end end """) == 4
         assert toil.run(r""" if False then 3 else if False then 4 else 5 end end """) == 5
 
+    def test_while(self, capsys):
+        assert toil.run(r""" i := 1; while i < 3 do i = i + 1 end """) == 3
+
+        assert toil.run(r"""
+            sum := 0;
+            i := 1; while i < 4 do sum = sum + i; i = i + 1 end;
+            sum
+        """) == 6
+
+        toil.run(r"""
+            i := 1; while i < 3 do
+                j := 1; while j < 3 do print(i); print(j); j = j + 1 end;
+                i = i + 1
+            end
+        """)
+        assert capsys.readouterr().out == "1\n1\n1\n2\n2\n1\n2\n2\n"
+
+        assert toil.run(r""" while False do 1/0 end """) is None
+
     def test_pseudo_func(self, capsys):
         assert toil.run(r""" 2 + 3 """) == 5
         assert toil.run(r""" 2 + 3 * 4 """) == 14

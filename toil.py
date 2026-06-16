@@ -316,6 +316,8 @@ class Compiler:
             case ("seq", exprs): self._seq(exprs)
             case ("if", [cond_expr, then_expr, else_expr]):
                 self._if(cond_expr, then_expr, else_expr)
+            case ("while", [cond_expr, body_expr]):
+                self._while(cond_expr, body_expr)
             case (op, [expr]):
                 self._expression(expr)
                 self._emit(op)
@@ -347,6 +349,17 @@ class Compiler:
         self._set_operand(else_jump, self._current_addr())
         self._expression(else_expr)
         self._set_operand(end_jump, self._current_addr())
+
+    def _while(self, cond_expr, body_expr):
+        self._emit("const", None)
+        loop_jump = self._current_addr()
+        self._expression(cond_expr)
+        cond_jump = self._current_addr()
+        self._emit("jump_if_false", None)
+        self._emit("pop")
+        self._expression(body_expr)
+        self._emit("jump", loop_jump)
+        self._set_operand(cond_jump, self._current_addr())
 
     def _set_operand(self, ip, operand):
         inst = self._code[ip]
@@ -500,33 +513,36 @@ if __name__ == "__main__":
 
     # Example
 
-    print("If:")
+    print("While:")
 
-    print(toil.ast(r""" if 2 == 2 then 3 + 3 else 4 + 4 end """))
-    # -> ('if', [('equal', [2, 2]), ('add', [3, 3]), ('add', [4, 4])])
-    print_code(toil.code(r""" if 2 == 2 then 3 + 3 else 4 + 4 end """))
-    # ->   0: ('const', 2)
-    # ->   1: ('const', 2)
-    # ->   2: ('equal',)
-    # ->   3: ('jump_if_false', 8)
-    # ->   4: ('const', 3)
-    # ->   5: ('const', 3)
-    # ->   6: ('add',)
-    # ->   7: ('jump', 11)
-    # ->   8: ('const', 4)
-    # ->   9: ('const', 4)
-    # ->  10: ('add',)
+    print(toil.ast(r""" while i < 3 do i = i + 1 end """))
+    # -> ('while', [('less', ['i', 3]), ('assign', ['i', ('add', ['i', 1])])])
+    print_code(toil.code(r""" while i < 3 do i = i + 1 end """))
+    # ->   0: ('const', None)
+    # ->   1: ('get', 'i')
+    # ->   2: ('const', 3)
+    # ->   3: ('less',)
+    # ->   4: ('jump_if_false', 11)
+    # ->   5: ('pop',)
+    # ->   6: ('get', 'i')
+    # ->   7: ('const', 1)
+    # ->   8: ('add',)
+    # ->   9: ('set', 'i')
+    # ->  10: ('jump', 1)
     # ->  11: ('halt',)
-    print(toil.run(r""" if 2 == 2 then 3 + 3 else 4 + 4 end """)) # -> 6
-    print(toil.run(r""" if 2 == 3 then 3 + 3 else 4 + 4 end """)) # -> 8
+    print(toil.run(r""" i := 1; while i < 3 do i = i + 1 end """)) # -> 3
 
-    print(toil.run(r""" if True then 3 else 4 end * 5 """))  # -> 15
+    print(toil.run(r"""
+        sum := 0;
+        i := 1; while i < 4 do sum = sum + i; i = i + 1 end;
+        sum
+    """))  # -> 6
 
-    print(toil.run(r""" if True then if True then 3 else 4 end else 5 end """))
-    # -> 3
-    print(toil.run(r""" if True then if False then 3 else 4 end else 5 end """))
-    # -> 4
-    print(toil.run(r""" if False then 3 else if True then 4 else 5 end end """))
-    # -> 4
-    print(toil.run(r""" if False then 3 else if False then 4 else 5 end end """))
-    # -> 5
+    toil.run(r"""
+        i := 1; while i < 3 do
+            j := 1; while j < 3 do print(i); print(j); j = j + 1 end;
+            i = i + 1
+        end
+    """)  # -> 1\n1\n1\n2\n2\n1\n2\n2
+
+    print(toil.run(r""" while False do 1/0 end """)) # -> None
