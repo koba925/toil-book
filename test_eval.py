@@ -28,6 +28,16 @@ class TestEvaluator:
         with pytest.raises(AssertionError, match="Unexpected expression"):
             toil.eval(("sub", [3, 2]))
 
+    def test_sequence(self, capsys):
+        assert toil.eval(("seq", [])) is None
+        assert toil.eval(("seq", [("add", [2, 3])])) == 5
+
+        assert toil.eval(("seq", [("print", [2]), 3])) == 3
+        assert capsys.readouterr().out == "2\n"
+
+        assert toil.eval(("seq", [("print", [2]), ("seq", [("print", [3]), 4])])) == 4
+        assert capsys.readouterr().out == "2\n3\n"
+
 
 if __name__ == "__main__":
     pytest.main([__file__])
