@@ -299,13 +299,23 @@ class Compiler:
 
     def compile(self):
         self._expression(self._expr)
-        self._code.append(("halt",))
+        self._emit("halt")
         return self._code
 
     def _expression(self, expr):
         match expr:
-            case None | bool() | int(): self._code.append(("const", expr))
+            case None | bool() | int(): self._emit("const", expr)
+            case (op, [expr]):
+                self._expression(expr)
+                self._emit(op)
+            case (op, [left_expr, right_expr]):
+                self._expression(left_expr)
+                self._expression(right_expr)
+                self._emit(op)
             case _: assert False, f"Unsupported expression @ compile(): {expr}"
+
+    def _emit(self, *inst):
+        self._code.append(inst)
 
 
 class VM:
@@ -319,6 +329,20 @@ class VM:
             self._ip += 1
             match inst:
                 case ("const", val): self._stack.append(val)
+                case ("print",):
+                    val = print(self._stack.pop()); self._stack.append(None)
+                case ("add",):
+                    r = self._stack.pop(); l = self._stack.pop();
+                    self._stack.append(l + r)
+                case ("mul",):
+                    r = self._stack.pop(); l = self._stack.pop();
+                    self._stack.append(l * r)
+                case ("equal",):
+                    r = self._stack.pop(); l = self._stack.pop();
+                    self._stack.append(l == r)
+                case ("less",):
+                    r = self._stack.pop(); l = self._stack.pop();
+                    self._stack.append(l < r)
                 case _:
                     assert False, f"Invalid instruction @ execute(): {inst}"
         assert len(self._stack) == 1, f"Invalid stack state @ execute(): {self._stack}"
@@ -418,25 +442,40 @@ if __name__ == "__main__":
 
     # Example
 
-    print("Stack machine:")
-    print(toil.execute([('const', 2), ('halt',)])) # -> 2
-    print(toil.execute([('const', None), ('halt',)])) # -> None
-    print(toil.execute([('const', True), ('halt',)])) # -> True
-    print(toil.execute([('const', False), ('halt',)])) # -> False
+    print("Pseudo functions:")
 
-    # toil.execute([('halt',)]) # -> Invalid stack state
-    # toil.execute([('const', 2), ('const', 3), ('halt',)]) # -> Invalid stack state
-    # toil.execute([('not_op',), ('halt',)]) # -> Invalid instruction
+    print(toil.ast(r""" 2 + 3 """))
+    # -> ('add', [2, 3])
+    print_code(toil.code(r""" 2 + 3 """))
+    # ->  0: ('const', 2)
+    # ->  1: ('const', 3)
+    # ->  2: ('add',)
+    # ->  3: ('halt',)
+    print(toil.run(r""" 2 + 3 """)) # -> 5
 
-    print("Compile:")
-    print_code(toil.code(r""" 2 """))
+    print(toil.ast(r""" 2 + 3 * 4 """))
+    # -> ('add', [2, ('mul', [3, 4])])
+    print_code(toil.code(r""" 2 + 3 * 4"""))
     # ->   0: ('const', 2)
-    # ->   1: ('halt',)
+    # ->   1: ('const', 3)
+    # ->   2: ('const', 4)
+    # ->   3: ('mul',)
+    # ->   4: ('add',)
+    # ->   5: ('halt',)
+    print(toil.run(r""" 2 + 3 * 4 """)) # -> 14
 
-    # toil.compile((2, 3, 4)) # -> Unsupported expression
+    print(toil.ast(r""" (2 + 3) * 4 """))
+    # -> ('mul', [('add', [2, 3]), 4])
+    print_code(toil.code(r""" (2 + 3) * 4"""))
+    # ->   0: ('const', 2)
+    # ->   1: ('const', 3)
+    # ->   2: ('add',)
+    # ->   3: ('const', 4)
+    # ->   4: ('mul',)
+    # ->   5: ('halt',)
+    print(toil.run(r""" (2 + 3) * 4 """)) # -> 20
 
-    print("Intermediate Code Interpreter:")
-    print(toil.run(r""" 2 """)) # -> 2
-    print(toil.run(r""" None """)) # -> None
-    print(toil.run(r""" True """)) # -> True
-    print(toil.run(r""" False """)) # -> False
+    print(toil.run(r""" 2 + 3 == 2 * 3 """)) # -> False
+    print(toil.run(r""" 2 + 3 < 2 * 3 """)) # -> True
+    print(toil.run(r""" print(2 + 3) """)) # -> 5\nNone
+

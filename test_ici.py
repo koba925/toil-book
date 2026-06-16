@@ -13,6 +13,16 @@ class TestIntermediateCodeInterpreter:
         assert toil.run(r""" True """) is True
         assert toil.run(r""" False """) is False
 
+    def test_pseudo_func(self, capsys):
+        assert toil.run(r""" 2 + 3 """) == 5
+        assert toil.run(r""" 2 + 3 * 4 """) == 14
+        assert toil.run(r""" (2 + 3) * 4 """) == 20
+        assert toil.run(r""" 2 + 3 == 2 * 3 """) is False
+        assert toil.run(r""" 2 + 3 < 2 * 3 """) is True
+
+        assert toil.run(r""" print(2 + 3) """) is None
+        assert capsys.readouterr().out == "5\n"
+
     def test_invalid_expression(self):
         with pytest.raises(Exception, match="Invalid stack state"):
             toil.execute([('halt',)]) # ->
