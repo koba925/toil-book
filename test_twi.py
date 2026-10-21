@@ -325,6 +325,48 @@ class TestTreeWalkInterpreter:
         with pytest.raises(AssertionError, match="Expected end"):
             toil.walk(r""" while True do 2 """)
 
+    def test_break_and_continue(self, capsys):
+        assert toil.walk(r""" while True do break end """) is None
+
+        assert toil.walk(r"""
+            i := 0; while i < 4 do
+                if i == 1 then i = 2; continue end;
+                print(i);
+                if i == 3 then break end;
+                i = i + 1
+            end
+        """) is None
+        assert capsys.readouterr().out == "0\n2\n3\n"
+
+        assert toil.walk(r"""
+            i := 0; while i < 2 do
+                j := 0; while j < 3 do
+                    print(i, j);
+                    if i == 0 and j == 1 then break end;
+                    j = j + 1
+                end;
+                i = i + 1
+            end
+        """) == 2
+        assert capsys.readouterr().out == "0 0\n0 1\n1 0\n1 1\n1 2\n"
+
+        assert toil.walk(r"""
+            def check_and_quit(i) do
+                if i == 2 then break end
+            end;
+            i := 0; while True do
+                check_and_quit(i);
+                print(i);
+                i := i + 1
+            end
+        """) is None
+        assert capsys.readouterr().out == "0\n1\n"
+
+        with pytest.raises(AssertionError, match="Break at top level"):
+            toil.walk(r""" break """)
+        with pytest.raises(AssertionError, match="Continue at top level"):
+            toil.walk(r""" continue """)
+
     def test_func(self):
         assert toil.walk(r"""func do 2 end ()""") == 2
         assert toil.walk(r"""func a do a + 2 end (3)""") == 5

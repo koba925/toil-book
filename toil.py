@@ -286,11 +286,16 @@ class Environment:
 class ReturnException(Exception):
     def __init__(self, val: Value = None) -> None: self.val = val
 
+class BreakException(Exception): pass
+class ContinueException(Exception): pass
+
 class Evaluator:
     def eval(self, expr: Expr, env: Environment) -> Value:
         match expr:
             case None | bool() | int(): return expr
             case Ident("return"): raise ReturnException(None)
+            case Ident("break"): raise BreakException()
+            case Ident("continue"): raise ContinueException()
             case Ident() as ident: return env.val(ident)
             case (Ident("func"), [params, body_expr]):
                 return (Ident("closure"), [params, body_expr, env])
@@ -329,7 +334,11 @@ class Evaluator:
 
     def _while(self, cond_expr, body_expr, env):
         val = None
-        while self.eval(cond_expr, env): val = self.eval(body_expr, env)
+        while self.eval(cond_expr, env):
+            try:
+                val = self.eval(body_expr, env)
+            except ContinueException: continue
+            except BreakException: return None
         return val
 
     def _op(self, op_expr, args_expr, env) -> Value:
@@ -526,6 +535,8 @@ class Interpreter:
         try:
             return Evaluator().eval(expr, self._env)
         except ReturnException as e: return e.val
+        except ContinueException: assert False, "Continue at top level @ eval()"
+        except BreakException: assert False, "Break at top level @ eval()"
 
     def walk(self, src: str) -> Value:
         return self.eval(self.ast(src))
@@ -590,38 +601,60 @@ if __name__ == "__main__":
 
     # Example
 
-    print("Return:")
+    print("Break and continue:")
 
-    print(toil.ast(r""" return """)) # -> return
-    print(toil.walk(r""" return; 3 """)) # -> None
-    print(toil.ast(r""" return(2) """)) # -> (return, [2])
-    print(toil.walk(r""" return(2); 3 """)) # -> 2
+    print(toil.ast(r""" break """)) # -> break
+    print(toil.ast(r""" continue """)) # -> continue
 
-    toil.walk(r"""
-        def fib_rec(n) do
-            if n == 0 then return(0) end;
-            if n == 1 then return(1) end;
-            fib_rec(n - 1) + fib_rec(n - 2)
+    print(toil.walk(r""" while True do break end """)) # -> None
+
+    print(toil.walk(r"""
+        i := 0; while i < 5 do
+            print(i);
+            i = i + 1
         end
-    """)
-    print(toil.walk(r""" fib_rec(0) """)) # -> 0
-    print(toil.walk(r""" fib_rec(1) """)) # -> 1
-    print(toil.walk(r""" fib_rec(6) """)) # -> 8
+    """)) # -> 0\n1\n2\n3\n4\n5
 
-    toil.walk(r"""
-        def is_prime(n) do
-            if n < 2 then return(False) end;
-            i := 2;
-            while i * i <= n do
-                if n % i == 0 then return(False) end;
-                i = i + 1
+    print(toil.walk(r"""
+        i := 0; while i < 5 do
+            if i == 1 then i = 2; continue end;
+            print(i);
+            if i == 3 then break end;
+            i = i + 1
+        end
+    """)) # -> 0\n2\n3\nNone
+
+    print(toil.walk(r"""
+        i := 0; while i < 2 do
+            j := 0; while j < 3 do
+                print(i, j);
+                j = j + 1
             end;
-            True
+            i = i + 1
         end
-    """)
-    print(toil.walk(r""" is_prime(1) """)) # -> False
-    print(toil.walk(r""" is_prime(2) """)) # -> True
-    print(toil.walk(r""" is_prime(4) """)) # -> False
-    print(toil.walk(r""" is_prime(7) """)) # -> True
-    print(toil.walk(r""" is_prime(15) """)) # -> False
+    """)) # -> 0 0\n0 1\n0 2\n1 0\n1 1\n1 2\n2
 
+    print(toil.walk(r"""
+        i := 0; while i < 2 do
+            j := 0; while j < 3 do
+                print(i, j);
+                if i == 0 and j == 1 then break end;
+                j = j + 1
+            end;
+            i = i + 1
+        end
+    """)) # -> 0 0\n0 1\n1 0\n1 1\n1 2\n2
+
+    print(toil.walk(r"""
+        def check_and_quit(i) do
+            if i == 2 then break end
+        end;
+        i := 0; while True do
+            check_and_quit(i);
+            print(i);
+            i = i + 1
+        end
+    """)) # -> 0\n1\nNone
+
+    # print(toil.walk(r""" break """)) # -> Break at top level
+    # print(toil.walk(r""" continue """)) # -> Continue at top level
