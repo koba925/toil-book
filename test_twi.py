@@ -51,6 +51,23 @@ class TestTreeWalkInterpreter:
         assert toil.walk(r""" 02 """) == 2
         assert toil.walk(r""" 23 """) == 23
 
+    def test_paren(self):
+        assert toil.walk(r""" (2 + 3) * 4 """) == 20
+        assert toil.walk(r""" 2 * (3 + 4) """) == 14
+        assert toil.walk(r""" (2 + 3) """) == 5
+        assert toil.walk(r""" (2) """) == 2
+        assert toil.walk(r""" (5 - (4 - 2)) * 2 """) == 6
+        assert toil.walk(r""" (2 + 3) * (4 + 5) """) == 45
+
+        with pytest.raises(AssertionError, match="Extra token"):
+            toil.walk(r""" 2 + 3) """)
+        with pytest.raises(AssertionError, match="Invalid token"):
+            toil.walk(r""" (+) """)
+        with pytest.raises(AssertionError, match=r"Expected \)"):
+            toil.walk(r""" (2 + 3 """)
+        with pytest.raises(AssertionError, match="Invalid token"):
+            toil.walk(r""" () """)
+
     def test_empty_source(self):
         with pytest.raises(AssertionError, match="Invalid token"):
             toil.walk(r"""""")
