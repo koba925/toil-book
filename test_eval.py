@@ -1,7 +1,7 @@
 import pytest
-from toil import Evaluator
+from toil import Interpreter
 
-toil = Evaluator()
+toil = Interpreter()
 
 class TestEvaluator:
     def test_constants(self):
@@ -43,6 +43,13 @@ class TestEvaluator:
         assert toil.eval(("if", [("equal", [2, 3]), 4, 5])) == 5
         assert toil.eval(("if", [True, ("seq", [2, 3]), 4])) == 3
         assert toil.eval(("if", [False, 2, ("if", [True, 3, 4])])) == 3
+
+    def test_variable(self):
+        assert toil.eval(("define", ["a", ("add", [2, 3])])) == 5
+        assert toil.eval("a") == 5
+        assert toil.eval(("if", [("equal", ["a", 5]), 2, 3])) == 2
+        assert toil.eval(("define", ["a", 6])) == 6
+        assert toil.eval("a") == 6
 
 
 if __name__ == "__main__":
