@@ -509,6 +509,51 @@ class TestTreeWalkInterpreter:
         with pytest.raises(AssertionError, match="Extra token"):
             toil.walk(r""" 2] """)
 
+    def test_array(self):
+        assert toil.walk(r""" list() """) == []
+        assert toil.walk(r""" list(2) """) == [2]
+        assert toil.walk(r""" list(2, 3) """) == [2, 3]
+
+        toil.walk(r""" l := list(2, 3, 4) """)
+        assert toil.walk(r""" index(l, 0) """) == 2
+        assert toil.walk(r""" index(l, 2) """) == 4
+
+        assert toil.walk(r""" len(list(2, 3)) """) == 2
+        assert toil.walk(r""" slice(list(2, 3, 4, 5), 1, 3) """) == [3, 4]
+        assert toil.walk(r""" slice(list(2, 3, 4, 5), None, 3) """) == [2, 3, 4]
+        assert toil.walk(r""" slice(list(2, 3, 4, 5), 1, None) """) == [3, 4, 5]
+
+        toil.walk(r""" l := list(2, 3, 4) """)
+        assert toil.walk(r""" l[1] """) == 3
+        assert toil.walk(r""" l[-1] """) == 4
+
+        assert toil.walk(r""" l := list(2, 3, list(4, 5)) """) == [2, 3, [4, 5]]
+        assert toil.walk(r""" l[2] """) == [4, 5]
+        assert toil.walk(r""" l[2][0] """) == 4
+
+        assert toil.walk(r""" push(l, 6) """) is None
+        assert toil.walk(r""" l """) == [2, 3, [4, 5], 6]
+        assert toil.walk(r""" pop(l) """) == 6
+        assert toil.walk(r""" l """) == [2, 3, [4, 5]]
+        assert toil.walk(r""" pop(l, 1) """) == 3
+        assert toil.walk(r""" l """) == [2, [4, 5]]
+
+        assert toil.walk(r""" [] """) == []
+        assert toil.walk(r""" [2 + 3] """) == [5]
+        assert toil.walk(r""" [2, 3] """) == [2, 3]
+        assert toil.walk(r""" [2, 3, [4, 5]] """) == [2, 3, [4, 5]]
+
+        assert toil.walk(r""" [2, 3][1] """) == 3
+
+        assert toil.walk(r""" [2, 3] == [2, 3] """) is True
+        assert toil.walk(r""" [2, 3] == [2, 4] """) is False
+        assert toil.walk(r""" [2, 3] + [4, 5] """) == [2, 3, 4, 5]
+
+        with pytest.raises(AssertionError, match=r"Expected \]"):
+            toil.walk(r""" [2 """)
+        with pytest.raises(AssertionError, match="Extra token"):
+            toil.walk(r""" 2] """)
+
     def test_empty_source(self):
         with pytest.raises(AssertionError, match="Invalid token"):
             toil.walk(r"""""")

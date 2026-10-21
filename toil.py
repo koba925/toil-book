@@ -17,8 +17,8 @@ def is_ident(s): return is_ident_first(s[0])
 from typing import Callable
 
 type Token = None | bool | int | Ident
-type Expr = None | bool | int | Ident | tuple
-type Value = None | bool | int | Callable | tuple
+type Expr = None | bool | int | Ident | tuple | list
+type Value = None | bool | int | Callable | tuple | list
 type Instruction = tuple
 
 class Scanner:
@@ -149,6 +149,7 @@ class Parser:
         match self._current_token():
             case None | bool() | int(): return self._current_and_advance()
             case Ident("("): return self._group()
+            case Ident("["): return self._list()
             case Ident("func"): return self._func()
             case Ident("def"): return self._def()
             case Ident("scope"): return self._scope()
@@ -163,6 +164,12 @@ class Parser:
         expr = self._expression()
         self._consume(Ident(")"))
         return expr
+
+    def _list(self):
+        self._current_and_advance()
+        exprs = self._comma_separated_exprs(Ident("]"))
+        self._consume(Ident("]"))
+        return exprs
 
     def _func(self):
         self._current_and_advance()
@@ -306,6 +313,8 @@ class Evaluator:
     def eval(self, expr: Expr, env: Environment) -> Value:
         match expr:
             case None | bool() | int(): return expr
+            case list() as exprs:
+                return [self.eval(expr, env) for expr in exprs]
             case Ident("return"): raise ReturnException(None)
             case Ident("break"): raise BreakException()
             case Ident("continue"): raise ContinueException()
@@ -531,10 +540,13 @@ class Interpreter:
         self._env.define(Ident("not"), lambda args: not args[0])
 
         self._env.define(Ident("tuple"), lambda args: tuple(args))
+        self._env.define(Ident("list"), lambda args: args)
 
         self._env.define(Ident("index"), lambda args: args[0][args[1]])
         self._env.define(Ident("len"), lambda args: len(args[0]))
         self._env.define(Ident("slice"), lambda args: args[0][args[1]:args[2]])
+        self._env.define(Ident("push"), lambda args: args[0].append(args[1]))
+        self._env.define(Ident("pop"), lambda args: args[0].pop(*args[1:]))
 
         self._env.define(Ident("print"), lambda args: print(*args))
 
@@ -619,95 +631,50 @@ if __name__ == "__main__":
 
     # Example
 
-    print("Tuple:")
+    print("Array (list):")
 
-    print(toil.walk(r""" tuple() """)) # -> ()
-    print(toil.walk(r""" tuple(2) """)) # -> (2,)
-    print(toil.walk(r""" tuple(2, 3) """)) # -> (2, 3)
+    print(toil.walk(r""" list() """)) # -> []
+    print(toil.walk(r""" list(2) """)) # -> [2]
+    print(toil.walk(r""" list(2, 3) """)) # -> [2, 3]
 
-    toil.walk(r""" t := tuple(2, 3, 4) """)
-    print(toil.walk(r""" index(t, 0) """)) # -> 2
-    print(toil.walk(r""" index(t, 2) """)) # -> 4
+    toil.walk(r""" l := list(2, 3, 4) """)
+    print(toil.walk(r""" index(l, 0) """)) # -> 2
+    print(toil.walk(r""" index(l, 2) """)) # -> 4
 
-    print(toil.walk(r""" len(tuple(2, 3)) """)) # -> 2
-    print(toil.walk(r""" slice(tuple(2, 3, 4, 5), 1, 3) """)) # -> (3, 4)
-    print(toil.walk(r""" slice(tuple(2, 3, 4, 5), None, 3) """)) # -> (2, 3, 4)
-    print(toil.walk(r""" slice(tuple(2, 3, 4, 5), 1, None) """)) # -> (3, 4, 5)
-    print(toil.scan(r""" t[2] """)) # -> [t, [, 2, ], $EOF]
-    print(toil.ast(r""" t[2] """)) # -> (index, [t, 2])
-    toil.walk(r""" t := tuple(2, 3, 4) """)
-    print(toil.walk(r""" t[1] """)) # -> 3
-    print(toil.walk(r""" t[-1] """)) # -> 4
+    print(toil.walk(r""" len(list(2, 3)) """)) # -> 2
+    print(toil.walk(r""" slice(list(2, 3, 4, 5), 1, 3) """)) # -> [3, 4]
+    print(toil.walk(r""" slice(list(2, 3, 4, 5), None, 3) """)) # -> [2, 3, 4]
+    print(toil.walk(r""" slice(list(2, 3, 4, 5), 1, None) """)) # -> [3, 4, 5]
 
-    print(toil.walk(r""" t := tuple(2, 3, tuple(4, 5)) """)) # -> (2, 3, (4, 5))
-    print(toil.walk(r""" t[2] """)) # -> (4, 5)
-    print(toil.walk(r""" t[2][0] """)) # -> 4
+    print(toil.scan(r""" l[2] """)) # -> [l, [, 2, ], $EOF]
+    print(toil.ast(r""" l[2] """)) # -> (index, [l, 2])
+    toil.walk(r""" l := list(2, 3, 4) """)
+    print(toil.walk(r""" l[1] """)) # -> 3
+    print(toil.walk(r""" l[-1] """)) # -> 4
 
-    toil.walk(r""" f := func do tuple(add, sub) end """)
-    print(toil.ast(r""" f()[0](2, 3) """)) # -> ((index, [(f, []), 0]), [2, 3])
-    print(toil.walk(r""" f()[0](2, 3) """)) # -> 5
+    print(toil.walk(r""" l := list(2, 3, list(4, 5)) """)) # -> [2, 3, [4, 5]]
+    print(toil.walk(r""" l[2] """)) # -> [4, 5]
+    print(toil.walk(r""" l[2][0] """)) # -> 4
 
-    print(toil.walk(r""" tuple(2, 3) == tuple(2, 3) """)) # -> True
-    print(toil.walk(r""" tuple(2, 3) == tuple(2, 4) """)) # -> False
-    print(toil.walk(r""" tuple(2, 3) + tuple(4, 5) """)) # -> (2, 3, 4, 5)
+    print(toil.walk(r""" push(l, 6) """)) # -> None
+    print(toil.walk(r""" l """)) # -> [2, 3, [4, 5], 6]
+    print(toil.walk(r""" pop(l) """)) # -> 6
+    print(toil.walk(r""" l """)) # -> [2, 3, [4, 5]]
+    print(toil.walk(r""" pop(l, 1) """)) # -> 3
+    print(toil.walk(r""" l """)) # -> [2, [4, 5]]
 
-    # toil.walk(r""" t[2 """) # -> Expected ]
+    print(toil.ast(r""" [] """)) # -> []
+    print(toil.walk(r""" [] """)) # -> []
+    print(toil.walk(r""" [2 + 3] """)) # -> [5]
+    print(toil.walk(r""" [2, 3] """)) # -> [2, 3]
+    print(toil.walk(r""" [2, 3, [4, 5]] """)) # -> [2, 3, [4, 5]]
+
+    print(toil.walk(r""" [2, 3][1] """)) # -> 3
+
+    print(toil.walk(r""" [2, 3] == [2, 3] """)) # -> True
+    print(toil.walk(r""" [2, 3] == [2, 4] """)) # -> False
+
+    print(toil.walk(r""" [2, 3] + [4, 5] """)) # -> [2, 3, 4, 5]
+
+    # toil.walk(r""" [2 """) # -> Expected ]
     # toil.walk(r""" 2] """) # -> Extra token
-
-    print("Binary search tree:")
-    toil.walk(r"""
-        def bst_put(bst, val) do
-            if bst == None then tuple(val, None, None)
-            else
-                cur_val := bst[0];
-                if val == cur_val then
-                    bst
-                elif val < cur_val then
-                    tuple(cur_val, bst_put(bst[1], val), bst[2])
-                else
-                    tuple(cur_val, bst[1], bst_put(bst[2], val))
-                end
-            end
-        end
-    """)
-    toil.walk(r""" bst := None """)
-    toil.walk(r""" bst = bst_put(bst, 7) """)
-    toil.walk(r""" bst = bst_put(bst, 3) """)
-    toil.walk(r""" bst = bst_put(bst, 1) """)
-    toil.walk(r""" bst = bst_put(bst, 9) """)
-    toil.walk(r""" bst = bst_put(bst, 5) """)
-
-    print("Walking tree:")
-    toil.walk(r"""
-        def bst_walk(bst) do
-            if bst == None then None
-            else
-                bst_walk(bst[1]); print(bst[0]); bst_walk(bst[2])
-            end
-        end
-    """)
-    toil.walk(r"""
-        def bst_find(bst, val) do
-            if bst == None then False
-            else
-                cur_val := bst[0];
-                if val == cur_val then True
-                elif val < cur_val then bst_find(bst[1], val)
-                else bst_find(bst[2], val)
-                end
-            end
-        end
-    """)
-
-    toil.walk(r""" bst_walk(bst) """)
-    # -> 1\n3\n5\n7\n9
-
-    print("Finding values:")
-    toil.walk(r"""
-        i := 0;
-        while i < 10 do
-            print(bst_find(bst, i));
-            i = i + 1
-        end
-    """)
-    # -> False\nTrue\nFalse\nTrue\nFalse\nTrue\nFalse\nTrue\nFalse\nTrue
