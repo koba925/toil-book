@@ -327,8 +327,8 @@ class Evaluator:
                 return self.eval(body_expr, Environment(env))
             case (Ident("define"), [Ident() as ident, expr]):
                 return env.define(ident, self.eval(expr, env))
-            case (Ident("assign"), [Ident() as ident, expr]):
-                return env.assign(ident, self.eval(expr, env))
+            case (Ident("assign"), [left_expr, right_expr]):
+                return self._assign(left_expr, right_expr, env)
             case (Ident("seq"), exprs): return self._seq(exprs, env)
             case (Ident("if"), [cond_expr, then_expr, else_expr]):
                 return self._if(cond_expr, then_expr, else_expr, env)
@@ -342,6 +342,21 @@ class Evaluator:
                 return self._op(op_expr, args_expr, env)
             case _:
                 assert False, f"Unexpected expression @ eval(): {expr}"
+
+    def _assign(self, left_expr, right_expr, env):
+        val = self.eval(right_expr, env)
+        match left_expr:
+            case Ident() as ident:
+                return env.assign(ident, val)
+            case (Ident("index"), [coll_expr, index_expr]):
+                coll_val = self.eval(coll_expr, env)
+                index_val = self.eval(index_expr, env)
+                assert isinstance(coll_val, list) and isinstance(index_val, int), \
+                    f"Invalid index assignment @ _assign(): {left_expr}"
+                coll_val[index_val] = val
+                return val
+            case unexpected:
+                assert False, f"Invalid assign target @ _assign(): {unexpected}"
 
     def _seq(self, exprs, env):
         val = None
@@ -631,50 +646,47 @@ if __name__ == "__main__":
 
     # Example
 
-    print("Array (list):")
+    print("Assign to an array element:")
 
-    print(toil.walk(r""" list() """)) # -> []
-    print(toil.walk(r""" list(2) """)) # -> [2]
-    print(toil.walk(r""" list(2, 3) """)) # -> [2, 3]
+    print(toil.ast(r""" arr[2] = 3 """)) # -> (assign, [(index, [arr, 2]), 3])
+    print(toil.walk(r""" arr := [2, 3, 4]; arr[2] = 5 """)) # -> 5
+    print(toil.walk(r""" arr """)) # -> [2, 3, 5]
+    print(toil.walk(r""" arr[-1] = 6; arr """)) # -> [2, 3, 6]
 
-    toil.walk(r""" l := list(2, 3, 4) """)
-    print(toil.walk(r""" index(l, 0) """)) # -> 2
-    print(toil.walk(r""" index(l, 2) """)) # -> 4
+    print(toil.ast(r""" arr2[0][1] = 5 """))
+    # -> (assign, [(index, [(index, [arr2, 0]), 1]), 5])
+    print(toil.walk(r""" arr2 := [[2, 3], 4]; arr2[0][1] = 5; arr2 """))
+    # -> [[2, 5], 4]
 
-    print(toil.walk(r""" len(list(2, 3)) """)) # -> 2
-    print(toil.walk(r""" slice(list(2, 3, 4, 5), 1, 3) """)) # -> [3, 4]
-    print(toil.walk(r""" slice(list(2, 3, 4, 5), None, 3) """)) # -> [2, 3, 4]
-    print(toil.walk(r""" slice(list(2, 3, 4, 5), 1, None) """)) # -> [3, 4, 5]
+    print(toil.walk(r""" a := [2, 3]; b := [4, 5]; a[0] = b[1] = 6; [a, b] """))
+    # -> [[6, 3], [4, 6]]
 
-    print(toil.scan(r""" l[2] """)) # -> [l, [, 2, ], $EOF]
-    print(toil.ast(r""" l[2] """)) # -> (index, [l, 2])
-    toil.walk(r""" l := list(2, 3, 4) """)
-    print(toil.walk(r""" l[1] """)) # -> 3
-    print(toil.walk(r""" l[-1] """)) # -> 4
+    # toil.walk(r""" tpl := tuple(2, 3, 4); tpl[2] = 5 """)
+    # -> Invalid index assignment
+    # toil.walk(r""" arr := [2, 3]; arr[None] = 4 """)
+    # -> Invalid index assignment
+    print(toil.walk(r""" arr := [2, 3]; arr[True] = 4; arr """))
+    # -> [2, 4]
+    # toil.walk(r""" 2 = 3 """) # -> Invalid assign target
 
-    print(toil.walk(r""" l := list(2, 3, list(4, 5)) """)) # -> [2, 3, [4, 5]]
-    print(toil.walk(r""" l[2] """)) # -> [4, 5]
-    print(toil.walk(r""" l[2][0] """)) # -> 4
+    toil.walk(r"""
+        def sieve(n) do
+            s := [False, False] + [True] * (n - 2);
+            i := 2; while i * i < n do
+                if s[i] then
+                    j := i * i; while j < n do
+                        s[j] = False;
+                        j = j + i
+                    end
+                end;
+                i = i + 1
+            end;
 
-    print(toil.walk(r""" push(l, 6) """)) # -> None
-    print(toil.walk(r""" l """)) # -> [2, 3, [4, 5], 6]
-    print(toil.walk(r""" pop(l) """)) # -> 6
-    print(toil.walk(r""" l """)) # -> [2, 3, [4, 5]]
-    print(toil.walk(r""" pop(l, 1) """)) # -> 3
-    print(toil.walk(r""" l """)) # -> [2, [4, 5]]
-
-    print(toil.ast(r""" [] """)) # -> []
-    print(toil.walk(r""" [] """)) # -> []
-    print(toil.walk(r""" [2 + 3] """)) # -> [5]
-    print(toil.walk(r""" [2, 3] """)) # -> [2, 3]
-    print(toil.walk(r""" [2, 3, [4, 5]] """)) # -> [2, 3, [4, 5]]
-
-    print(toil.walk(r""" [2, 3][1] """)) # -> 3
-
-    print(toil.walk(r""" [2, 3] == [2, 3] """)) # -> True
-    print(toil.walk(r""" [2, 3] == [2, 4] """)) # -> False
-
-    print(toil.walk(r""" [2, 3] + [4, 5] """)) # -> [2, 3, 4, 5]
-
-    # toil.walk(r""" [2 """) # -> Expected ]
-    # toil.walk(r""" 2] """) # -> Extra token
+            primes := [];
+            i := 0; while i < n do
+                if s[i] then push(primes, i) end;
+                i = i + 1
+            then primes end
+        end
+    """)
+    print(toil.walk(r""" sieve(10) """)) # -> [2, 3, 5, 7]

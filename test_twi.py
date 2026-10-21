@@ -554,6 +554,22 @@ class TestTreeWalkInterpreter:
         with pytest.raises(AssertionError, match="Extra token"):
             toil.walk(r""" 2] """)
 
+    def test_assign_elem(self):
+        assert toil.walk(r""" arr := [2, 3, 4]; arr[2] = 5 """) == 5
+        assert toil.walk(r""" arr """) == [2, 3, 5]
+        assert toil.walk(r""" arr[-1] = 6; arr """) == [2, 3, 6]
+
+        assert toil.walk(r""" arr2 := [[2, 3], 4]; arr2[0][1] = 5; arr2 """) == [[2, 5], 4]
+        assert toil.walk(r""" a := [2, 3]; b := [4, 5]; a[0] = b[1] = 6; [a, b] """) == [[6, 3], [4, 6]]
+
+        with pytest.raises(AssertionError, match="Invalid index assignment"):
+            toil.walk(r""" tpl := tuple(2, 3, 4); tpl[2] = 5 """)
+        with pytest.raises(AssertionError, match="Invalid index assignment"):
+            toil.walk(r""" arr := [2, 3]; arr[None] = 4 """)
+        assert toil.walk(r""" arr := [2, 3]; arr[True] = 4; arr """) == [2, 4]
+        with pytest.raises(AssertionError, match="Invalid assign target"):
+            toil.walk(r""" 2 = 3 """)
+
     def test_empty_source(self):
         with pytest.raises(AssertionError, match="Invalid token"):
             toil.walk(r"""""")
@@ -733,6 +749,30 @@ class TestExamples:
         assert toil.walk(r""" is_prime(4) """) is False
         assert toil.walk(r""" is_prime(7) """) is True
         assert toil.walk(r""" is_prime(15) """) is False
+
+    def test_sieve(self):
+        assert toil.walk(r"""
+            def sieve(n) do
+                s := [False, False] + [True] * (n - 2);
+                i := 2; while i * i < n do
+                    if s[i] then
+                        j := i * i; while j < n do
+                            s[j] = False;
+                            j = j + i
+                        end
+                    end;
+                    i = i + 1
+                end;
+
+                primes := [];
+                i := 0; while i < n do
+                    if s[i] then push(primes, i) end;
+                    i = i + 1
+                then primes end
+            end;
+
+            sieve(10)
+        """) == [2, 3, 5, 7]
 
 
 import os, sys, io, runpy
