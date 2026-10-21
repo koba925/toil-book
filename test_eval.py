@@ -146,6 +146,52 @@ class TestEvaluator:
             ("f", [])
         ])])) == 2
 
+    def test_while(self, capsys):
+        assert toil.eval(("seq", [
+            ("define", ["i", 1]),
+            ("while", [
+                ("less", ["i", 4]),
+                ("seq", [
+                    ("print", ["i"]),
+                    ("assign", ["i", ("add", ["i", 1])])
+                ])
+            ])
+        ])) == 4
+        assert capsys.readouterr().out == "1\n2\n3\n"
+
+        assert toil.eval(("seq", [
+            ("define", ["i", 1]), ("define", ["sum", 0]),
+            ("while", [
+                ("less", ["i", 4]),
+                ("seq", [
+                    ("assign", ["sum", ("add", ["sum", "i"])]),
+                    ("assign", ["i", ("add", ["i", 1])])
+                ])
+            ]),
+            "sum"
+        ])) == 6
+
+        assert toil.eval(("while", [False, ("div", [1, 0])])) is None
+
+        assert toil.eval(("seq", [
+            ("define", ["i", 0]),
+            ("while", [
+                ("less", ["i", 2]),
+                ("seq", [
+                    ("define", ["j", 0]),
+                    ("while", [
+                        ("less", ["j", 3]),
+                        ("seq", [
+                            ("print", ["i", "j"]),
+                            ("assign", ["j", ("add", ["j", 1])])
+                        ])
+                    ]),
+                    ("assign", ["i", ("add", ["i", 1])])
+                ])
+            ])
+        ])) == 2
+        assert capsys.readouterr().out == "0 0\n0 1\n0 2\n1 0\n1 1\n1 2\n"
+
 
 if __name__ == "__main__":
     pytest.main([__file__])
