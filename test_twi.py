@@ -66,6 +66,17 @@ class TestTreeWalkInterpreter:
         with pytest.raises(AssertionError, match="Invalid token"):
             toil.walk(r""" = a """)
 
+    def test_not(self):
+        assert toil.walk(r""" not 2 == 2 """) is False
+        assert toil.walk(r""" not not 2 == 2 """) is True
+        assert toil.walk(r""" a := not 2 == 2 """) is False
+
+    def test_unary_minus(self):
+        assert toil.walk(r""" -2 """) == -2
+        assert toil.walk(r""" --2 """) == 2
+        assert toil.walk(r""" 3--2 """) == 5
+        assert toil.walk(r""" -add(2, 3) * 4 """) == -20
+
     def test_comparison(self):
         assert toil.walk(r""" 2 == 2 """) is True
         assert toil.walk(r""" 2 == 3 """) is False
@@ -114,8 +125,6 @@ class TestTreeWalkInterpreter:
             toil.walk(r""" 2 + """)
         with pytest.raises(AssertionError, match="Invalid token"):
             toil.walk(r""" 2 - + 3 """)
-        with pytest.raises(AssertionError, match="Invalid token"):
-            toil.walk(r""" -2 """)
 
     def test_mul_div_mod(self):
         assert toil.walk(r""" 2 * 3 """) == 6

@@ -100,7 +100,10 @@ class Parser:
     def _define_assign(self):
         return self._binary_right({
             Ident(":="): Ident("define"), Ident("="): Ident("assign")
-        }, self._comparison)
+        }, self._not)
+
+    def _not(self):
+        return self._unary({Ident("not"): Ident("not")}, self._comparison)
 
     def _comparison(self):
         return self._binary_left({
@@ -118,7 +121,10 @@ class Parser:
         return self._binary_left({
             Ident("*"): Ident("mul"), Ident("/"): Ident("div"),
             Ident("%"): Ident("mod")
-        }, self._call)
+        }, self._unaries)
+
+    def _unaries(self):
+        return self._unary({Ident("-"): Ident("neg")}, self._call)
 
     def _call(self):
         target = self._primary()
@@ -207,6 +213,13 @@ class Parser:
             return (ops[op], [left, self._binary_right(ops, sub_elem)])
         else:
             return left
+
+    def _unary(self, ops, sub_elem):
+        if type(op := self._current_token()) is Ident and op in ops:
+            self._current_and_advance()
+            return (ops[op], [self._unary(ops, sub_elem)])
+        else:
+            return sub_elem()
 
     def _comma_separated_exprs(self, terminator):
         cse = []
@@ -462,6 +475,7 @@ class Interpreter:
         self._env.define(Ident("mul"), lambda args: args[0] * args[1])
         self._env.define(Ident("div"), lambda args: args[0] // args[1])
         self._env.define(Ident("mod"), lambda args: args[0] % args[1])
+        self._env.define(Ident("neg"), lambda args: -args[0])
 
         self._env.define(Ident("equal"), lambda args: args[0] == args[1])
         self._env.define(Ident("not_equal"), lambda args: args[0] != args[1])
@@ -469,6 +483,8 @@ class Interpreter:
         self._env.define(Ident("greater"), lambda args: args[0] > args[1])
         self._env.define(Ident("less_equal"), lambda args: args[0] <= args[1])
         self._env.define(Ident("greater_equal"), lambda args: args[0] >= args[1])
+
+        self._env.define(Ident("not"), lambda args: not args[0])
 
         self._env.define(Ident("print"), lambda args: print(*args))
 
@@ -549,15 +565,25 @@ if __name__ == "__main__":
 
     # Example
 
-    print("More comparison:")
+    print("Unary operators:")
 
-    print(toil.walk(r""" 2 != 2 """)) # -> False
-    print(toil.walk(r""" 2 != 3 """)) # -> True
+    print(toil.ast(r""" -2 """)) # -> (neg, [2])
+    print(toil.walk(r""" -2 """)) # -> -2
 
-    print(toil.walk(r""" 3 <= 2 """)) # -> False
-    print(toil.walk(r""" 2 <= 2 """)) # -> True
-    print(toil.walk(r""" 2 <= 3 """)) # -> True
+    print(toil.ast(r""" --2 """)) # -> (neg, [(neg, [2])])
+    print(toil.walk(r""" --2 """)) # -> 2
 
-    print(toil.walk(r""" 2 >= 3 """)) # -> False
-    print(toil.walk(r""" 2 >= 2 """)) # -> True
-    print(toil.walk(r""" 3 >= 2 """)) # -> True
+    print(toil.ast(r""" 3--2 """)) # -> (sub, [3, (neg, [2])])
+    print(toil.walk(r""" 3--2 """)) # -> 5
+
+    print(toil.ast(r""" -add(2, 3) * 4 """)) # -> (mul, [(neg, [(add, [2, 3])]), 4])
+    print(toil.walk(r""" -add(2, 3) * 4 """)) # -> -20
+
+    print(toil.ast(r""" not 2 == 2 """)) # -> (not, [(equal, [2, 2])])
+    print(toil.walk(r""" not 2 == 2 """)) # -> False
+
+    print(toil.ast(r""" not not 2 == 2 """)) # -> (not, [(not, [(equal, [2, 2])])])
+    print(toil.walk(r""" not not 2 == 2 """)) # -> True
+
+    print(toil.ast(r""" a := not 2 == 2 """)) # -> (define, [a, (not, [(equal, [2, 2])])])
+    print(toil.walk(r""" a := not 2 == 2 """)) # -> False
