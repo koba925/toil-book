@@ -100,6 +100,11 @@ class Parser:
     def _define_assign(self):
         return self._binary_right({
             Ident(":="): Ident("define"), Ident("="): Ident("assign")
+        }, self._and_or)
+
+    def _and_or(self):
+        return self._binary_left({
+            Ident("and"): Ident("and"), Ident("or"): Ident("or")
         }, self._not)
 
     def _not(self):
@@ -288,6 +293,10 @@ class Evaluator:
             case (Ident("seq"), exprs): return self._seq(exprs, env)
             case (Ident("if"), [cond_expr, then_expr, else_expr]):
                 return self._if(cond_expr, then_expr, else_expr, env)
+            case (Ident("and"), [left_expr, right_expr]):
+                return self.eval(left_expr, env) and self.eval(right_expr, env)
+            case (Ident("or"), [left_expr, right_expr]):
+                return self.eval(left_expr, env) or self.eval(right_expr, env)
             case (Ident("while"), [cond_expr, body_expr]):
                 return self._while(cond_expr, body_expr, env)
             case (op_expr, args_expr):
@@ -565,25 +574,25 @@ if __name__ == "__main__":
 
     # Example
 
-    print("Unary operators:")
+    print("And and or:")
 
-    print(toil.ast(r""" -2 """)) # -> (neg, [2])
-    print(toil.walk(r""" -2 """)) # -> -2
+    print(toil.walk(r""" True and False """)) # -> False
+    print(toil.walk(r""" False and True """)) # -> False
+    print(toil.walk(r""" True or False """)) # -> True
+    print(toil.walk(r""" False or True """)) # -> True
 
-    print(toil.ast(r""" --2 """)) # -> (neg, [(neg, [2])])
-    print(toil.walk(r""" --2 """)) # -> 2
+    print(toil.walk(r""" True and 2 """)) # -> 2
+    print(toil.walk(r""" 0 and 2 / 0 """)) # -> 0
+    print(toil.walk(r""" False or 2 """)) # -> 2
+    print(toil.walk(r""" 1 or 2 / 0 """)) # -> 1
 
-    print(toil.ast(r""" 3--2 """)) # -> (sub, [3, (neg, [2])])
-    print(toil.walk(r""" 3--2 """)) # -> 5
+    print(toil.walk(r""" print(2) and 3 """)) # -> 2\nNone
+    print(toil.walk(r""" not print(2) or 3 """)) # -> 2\nTrue
 
-    print(toil.ast(r""" -add(2, 3) * 4 """)) # -> (mul, [(neg, [(add, [2, 3])]), 4])
-    print(toil.walk(r""" -add(2, 3) * 4 """)) # -> -20
+    print(toil.walk(r""" True or False and False """)) # -> False  # (True or False) and False
+    print(toil.walk(r""" False and False or True """)) # -> True   # (False and False) or True
 
-    print(toil.ast(r""" not 2 == 2 """)) # -> (not, [(equal, [2, 2])])
-    print(toil.walk(r""" not 2 == 2 """)) # -> False
-
-    print(toil.ast(r""" not not 2 == 2 """)) # -> (not, [(not, [(equal, [2, 2])])])
-    print(toil.walk(r""" not not 2 == 2 """)) # -> True
-
-    print(toil.ast(r""" a := not 2 == 2 """)) # -> (define, [a, (not, [(equal, [2, 2])])])
-    print(toil.walk(r""" a := not 2 == 2 """)) # -> False
+    print(toil.walk(r""" not True and False """)) # -> False       # (not True) and False
+    print(toil.walk(r""" False or not False """)) # -> True        # False or (not False)
+    print(toil.walk(r""" a := True and False """)) # -> False      # a := (True and False)
+    print(toil.walk(r""" a """)) # -> False

@@ -66,6 +66,30 @@ class TestTreeWalkInterpreter:
         with pytest.raises(AssertionError, match="Invalid token"):
             toil.walk(r""" = a """)
 
+    def test_and_or(self, capsys):
+        assert toil.walk(r""" True and False """) is False
+        assert toil.walk(r""" False and True """) is False
+        assert toil.walk(r""" True or False """) is True
+        assert toil.walk(r""" False or True """) is True
+
+        assert toil.walk(r""" True and 2 """) == 2
+        assert toil.walk(r""" 0 and 2 / 0 """) == 0
+        assert toil.walk(r""" False or 2 """) == 2
+        assert toil.walk(r""" 1 or 2 / 0 """) == 1
+
+        assert toil.walk(r""" print(2) and 3 """) is None
+        assert capsys.readouterr().out == "2\n"
+        assert toil.walk(r""" not print(2) or 3 """) is True
+        assert capsys.readouterr().out == "2\n"
+
+        assert toil.walk(r""" True or False and False """) is False  # (True or False) and False
+        assert toil.walk(r""" False and False or True """) is True   # (False and False) or True
+        assert toil.walk(r""" not True and False """) is False       # (not True) and False
+        assert toil.walk(r""" False or not False """) is True        # False or (not False)
+
+        assert toil.walk(r""" a := True and False """) is False      # a := (True and False)
+        assert toil.walk(r""" a """) is False
+
     def test_not(self):
         assert toil.walk(r""" not 2 == 2 """) is False
         assert toil.walk(r""" not not 2 == 2 """) is True
