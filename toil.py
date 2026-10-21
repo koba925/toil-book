@@ -23,12 +23,18 @@ class Environment:
         else:
             assert False, f"Undefined variable @ val(): {name}"
 
+    def bind(self, params, args):
+        for param, arg in zip(params, args):
+            self.define(param, arg)
+
 
 class Evaluator:
     def eval(self, expr, env):
         match expr:
             case None | bool() | int(): return expr
             case str(name): return env.val(name)
+            case ("func", [params, body_expr]):
+                return expr
             case ("scope", [body_expr]):
                 return self.eval(body_expr, Environment(env))
             case ("define", [name, expr]):
@@ -57,7 +63,14 @@ class Evaluator:
     def _op(self, op_expr, args_expr, env):
         op_val = self.eval(op_expr, env)
         args_val = [self.eval(arg, env) for arg in args_expr]
-        return op_val(args_val)
+        match op_val:
+            case f if callable(f): return f(args_val)
+            case ("func", [params, body_expr]):
+                new_env = Environment(env)
+                new_env.bind(params, args_val)
+                return self.eval(body_expr, new_env)
+            case _:
+                assert False, f"Invalid operator @ _op(): {op_val}"
 
 
 class Interpreter:
@@ -88,29 +101,55 @@ if __name__ == "__main__":
 
     # Example
 
-    print("Built-in functions:")
+    print("User functions:")
 
-    print(toil.eval("add"))
-    # -> <function Interpreter._builtins.<locals>.<lambda> at ....>
+    print(toil.eval(("func", [["a", "b"], ("add", ["a", "b"])])))
+    # -> ('func', [['a', 'b'], ('add', ['a', 'b'])])
 
-    print(toil.eval(("add", [2, 3]))) # -> 5
-    print(toil.eval(("sub", [3, 2]))) # -> 1
-    print(toil.eval(("mul", [2, 3]))) # -> 6
-    print(toil.eval(("div", [6, 3]))) # -> 2
-    print(toil.eval(("mod", [7, 3]))) # -> 1
-    print(toil.eval(("equal", [2, 2]))) # -> True
-    print(toil.eval(("equal", [2, 3]))) # -> False
-    print(toil.eval(("less", [2, 2]))) # -> False
-    print(toil.eval(("less", [2, 3]))) # -> True
-    print(toil.eval(("greater", [2, 2]))) # -> False
-    print(toil.eval(("greater", [3, 2]))) # -> True
-    print(toil.eval(("print", [2]))) # -> 2\nNone
-    print(toil.eval(("print", [2, 3]))) # -> 2 3\nNone
+    toil.eval(("define", ["myadd", ("func", [["a", "b"], ("add", ["a", "b"])])]))
+    print(toil.eval(("myadd", [2, 3])))
+    # -> 5
 
-    toil.eval(("print", [("equal", [("add", [2, 3]), 5])])) # -> True
+    print(toil.eval(("myadd", [("myadd", [2, 3]), ("add", [4, 5])])))
+    # -> 14
 
-    toil.eval(("define", ["myadd", "add"]))
-    print(toil.eval(("myadd", [2, 3]))) # -> 5
+    print(toil.eval((
+        ("func", [["a", "b"], ("add", ["a", "b"])]),
+        [2, 3]
+    )))
+    # -> 5
+
+    print(toil.eval(("seq", [
+        ("define", ["twice", ("func", [["f", "x"], ("f", [("f", ["x"])])])]),
+        ("define", ["double", ("func", [["x"], ("mul", ["x", 2])])]),
+        ("twice", ["double", 3])
+    ])))
+    # -> 12
 
     # toil.eval(("not_defined", []))
     # -> Undefined variable
+    # toil.eval((2, [3, 4]))
+    # -> Invalid operator
+
+    print(toil.eval(("seq", [
+        ("define", ["a", 2]),
+        ("define", ["f", ("func", [[], "a"])]),
+        ("f", [])
+    ])))
+    # -> 2
+    print(toil.eval(("scope", [("seq", [
+        ("define", ["a", 3]),
+        ("f", [])
+    ])])))
+    # -> 3
+
+    print(toil.eval(("seq", [
+        ("define", ["a", 2]),
+        ("define", ["f", ("func", [[], "a"])]),
+        ("define", ["g", ("func", [[], ("seq", [
+            ("define", ["a", 3]),
+            ("f", [])
+        ])])]),
+        ("g", [])
+    ])))
+    # -> 3
