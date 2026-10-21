@@ -32,6 +32,32 @@ class Scanner:
             return "$EOF"
 
 
+class Parser:
+    def __init__(self, tokens):
+        self._tokens = tokens
+        self._pos = 0
+
+    def parse(self):
+        expr = self._expression()
+        assert self._current_token() == "$EOF", \
+            f"Extra token @ parse(): {self._current_token()}"
+        return expr
+
+    def _expression(self): return self._primary()
+
+    def _primary(self):
+        match self._current_token():
+            case int(): return self._current_and_advance()
+            case invalid:
+                assert False, f"Invalid token @ _primary(): {invalid}"
+
+    def _current_token(self): return self._tokens[self._pos]
+
+    def _current_and_advance(self):
+        self._pos += 1
+        return self._tokens[self._pos - 1]
+
+
 class Environment:
     def __init__(self, parent=None):
         self._parent = parent
@@ -135,6 +161,9 @@ class Interpreter:
     def scan(self, src):
         return Scanner(src).tokenize()
 
+    def parse(self, tokens):
+        return Parser(tokens).parse()
+
     def eval(self, expr):
         return Evaluator().eval(expr, self._env)
 
@@ -147,10 +176,18 @@ if __name__ == "__main__":
 
     print("Scan numbers:")
 
-    print(toil.scan(r""""""))  # -> ['$EOF']
+    print(toil.scan(r""""""))  # -> ["$EOF"]
     print(toil.scan(r"""2"""))  # -> [2, '$EOF']
     print(toil.scan(r"""02"""))  # -> [2, '$EOF']
     print(toil.scan(r"""23"""))  # -> [23, '$EOF']
 
     # print(toil.scan(r"""$"""))  # -> Invalid character
     # print(toil.scan(r"""2$"""))  # -> Invalid character
+
+    print("Parse numbers:")
+
+    print(toil.parse([2, "$EOF"])) # -> 2
+    print(toil.parse([23, "$EOF"])) # -> 23
+
+    # print(toil.parse([2, 34, "$EOF"])) # -> Extra token
+    # print(toil.parse(["$EOF"])) # -> Invalid token
