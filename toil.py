@@ -9,12 +9,18 @@ class Scanner:
         while (c := self._current_char()) != "$EOF":
             self._start_pos = self._current_pos
             match c:
+                case c if c.isspace(): self._advance()
+                case "#": self._comment()
                 case c if c.isdecimal(): self._number()
                 case invalid:
                     assert False, f"Invalid character @ tokenize(): {invalid}"
 
         self._tokens.append("$EOF")
         return self._tokens
+
+    def _comment(self):
+        while self._current_char() not in ("\n", "$EOF"):
+            self._advance()
 
     def _number(self):
         while self._current_char().isdecimal(): self._advance()
@@ -180,35 +186,20 @@ if __name__ == "__main__":
 
     # Example
 
-    print("Scan numbers:")
+    print("Whitespaces:")
+    print(toil.walk(r""" 2 """))  # -> 2
+    print(toil.walk(r"""
+        2
+    """))  # ->  2
 
-    print(toil.scan(r""""""))  # -> ["$EOF"]
-    print(toil.scan(r"""2"""))  # -> [2, '$EOF']
-    print(toil.scan(r"""02"""))  # -> [2, '$EOF']
-    print(toil.scan(r"""23"""))  # -> [23, '$EOF']
+    # print(toil.walk(r""" """))  # -> Invalid token
+    # print(toil.walk(r""" 2 34 """))  # -> Extra token
 
-    # print(toil.scan(r"""$"""))  # -> Invalid character
-    # print(toil.scan(r"""2$"""))  # -> Invalid character
+    print("Comment:")
 
-    print("Parse numbers:")
-
-    print(toil.parse([2, "$EOF"])) # -> 2
-    print(toil.parse([23, "$EOF"])) # -> 23
-
-    # print(toil.parse([2, 34, "$EOF"])) # -> Extra token
-    # print(toil.parse(["$EOF"])) # -> Invalid token
-
-    print("AST:")
-
-    print(toil.ast(r"""2"""))  # -> 2
-    print(toil.ast(r"""23"""))  # -> 23
-
-    print("Interpret numbers:")
-
-    print(toil.walk(r"""2"""))  # -> 2
-    print(toil.walk(r"""02"""))  # -> 2
-    print(toil.walk(r"""23"""))  # -> 23
-
-    # print(toil.walk(r"""$"""))  # -> Invalid character
-    # print(toil.walk(r"""2$"""))  # -> Invalid character
-    # print(toil.walk(r""""""))  # -> Invalid token
+    print(toil.walk(r""" 2 # Comment """))  # -> 2
+    print(toil.walk(r"""
+        # Comment
+        2
+        # Comment
+    """))  # -> 2
