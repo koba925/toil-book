@@ -262,6 +262,39 @@ class TestTreeWalkInterpreter:
         with pytest.raises(AssertionError, match="Expected end"):
             toil.walk(r""" while True do 2 """)
 
+    def test_func(self):
+        assert toil.walk(r"""func do 2 end ()""") == 2
+        assert toil.walk(r"""func a do a + 2 end (3)""") == 5
+        assert toil.walk(r"""func a, b do a + b end (2, 3)""") == 5
+
+        assert toil.walk(r"""
+            twice := func f, x do f(f(x)) end;
+            double := func x do x * 2 end;
+            twice(double, 3)
+        """) == 12
+
+        assert toil.walk(r"""
+            a := 2;
+            f := func do a end;
+            g := func do a := 3; f() end;
+            g()
+        """) == 2
+
+        assert toil.walk(r"""
+            func a do func b do a + b end end (2)(3)
+        """) == 5
+
+        with pytest.raises(AssertionError, match="Expected do"):
+            toil.walk(r""" func a, b a + b end """)
+        with pytest.raises(AssertionError, match="Expected end"):
+            toil.walk(r""" func a, b do end """)
+        with pytest.raises(AssertionError, match="Expected end"):
+            toil.walk(r""" func a, b do a + b """)
+        with pytest.raises(AssertionError, match="Expected do"):
+            toil.walk(r""" func a, do a + b end """)
+        with pytest.raises(AssertionError, match="Invalid token"):
+            toil.walk(r""" func , b do a + b end """)
+
     def test_empty_source(self):
         with pytest.raises(AssertionError, match="Invalid token"):
             toil.walk(r"""""")
