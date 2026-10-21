@@ -191,9 +191,15 @@ class Parser:
         cond_expr = self._expression()
         self._consume(Ident("then"))
         then_expr = self._expression()
-        self._consume(Ident("else"))
-        else_expr = self._expression()
-        self._consume(Ident("end"))
+        if self._current_token() == Ident("elif"):
+            else_expr = self._if()
+        elif self._current_token() == Ident("else"):
+            self._current_and_advance()
+            else_expr = self._expression()
+            self._consume(Ident("end"))
+        else:
+            else_expr = None
+            self._consume(Ident("end"))
         return (Ident("if"), [cond_expr, then_expr, else_expr])
 
     def _while(self):
@@ -574,25 +580,100 @@ if __name__ == "__main__":
 
     # Example
 
-    print("And and or:")
+    print("Elif and omitting else clauses:")
 
-    print(toil.walk(r""" True and False """)) # -> False
-    print(toil.walk(r""" False and True """)) # -> False
-    print(toil.walk(r""" True or False """)) # -> True
-    print(toil.walk(r""" False or True """)) # -> True
+    print(toil.ast(r""" if True then 2 end """))
+    # -> (if, [True, 2, None])
+    print(toil.walk(r""" if True then 2 end """))
+    # -> 2
 
-    print(toil.walk(r""" True and 2 """)) # -> 2
-    print(toil.walk(r""" 0 and 2 / 0 """)) # -> 0
-    print(toil.walk(r""" False or 2 """)) # -> 2
-    print(toil.walk(r""" 1 or 2 / 0 """)) # -> 1
+    print(toil.ast(r""" if False then 2 end """))
+    # -> (if, [False, 2, None])
+    print(toil.walk(r""" if False then 2 end """))
+    # -> None
 
-    print(toil.walk(r""" print(2) and 3 """)) # -> 2\nNone
-    print(toil.walk(r""" not print(2) or 3 """)) # -> 2\nTrue
+    print(toil.ast(r""" if True then 2 else 3 end """))
+    # -> (if, [True, 2, 3])
+    print(toil.walk(r""" if True then 2 else 3 end """))
+    # -> 2
 
-    print(toil.walk(r""" True or False and False """)) # -> False  # (True or False) and False
-    print(toil.walk(r""" False and False or True """)) # -> True   # (False and False) or True
+    print(toil.ast(r""" if False then 2 else 3 end """))
+    # -> (if, [False, 2, 3])
+    print(toil.walk(r""" if False then 2 else 3 end """))
+    # -> 3
 
-    print(toil.walk(r""" not True and False """)) # -> False       # (not True) and False
-    print(toil.walk(r""" False or not False """)) # -> True        # False or (not False)
-    print(toil.walk(r""" a := True and False """)) # -> False      # a := (True and False)
-    print(toil.walk(r""" a """)) # -> False
+    print(toil.ast(r""" if True then 2 elif True then 3 end """))
+    # -> (if, [True, 2, (if, [True, 3, None])])
+    print(toil.walk(r""" if True then 2 elif True then 3 end """))
+    # -> 2
+
+    print(toil.ast(r""" if True then 2 else if True then 3 else None end end"""))
+    # -> (if, [True, 2, (if, [True, 3, None])])
+    print(toil.walk(r""" if True then 2 else if True then 3 else None end end"""))
+    # -> 2
+
+    print(toil.ast(r""" if False then 2 elif True then 3 end """))
+    # -> (if, [False, 2, (if, [True, 3, None])])
+    print(toil.walk(r""" if False then 2 elif True then 3 end """))
+    # -> 3
+
+    print(toil.ast(r""" if False then 2 elif False then 3 end """))
+    # -> (if, [False, 2, (if, [False, 3, None])])
+    print(toil.walk(r""" if False then 2 elif False then 3 end """))
+    # -> None
+
+    print(toil.ast(r""" if False then 2 elif True then 3 else 4 end """))
+    # -> (if, [False, 2, (if, [True, 3, 4])])
+    print(toil.walk(r""" if False then 2 elif True then 3 else 4 end """))
+    # -> 3
+
+    print(toil.ast(r""" if True then 2 elif True then 3 else 4 end """))
+    # -> (if, [True, 2, (if, [True, 3, 4])])
+    print(toil.walk(r""" if True then 2 elif True then 3 else 4 end """))
+    # -> 2
+
+    print(toil.ast(r""" if False then 2 elif False then 3 else 4 end """))
+    # -> (if, [False, 2, (if, [False, 3, 4])])
+    print(toil.walk(r""" if False then 2 elif False then 3 else 4 end """))
+    # -> 4
+
+    print(toil.ast(r"""
+        if False then
+            2
+        elif False then
+            3
+        elif True then
+            4
+        else
+            5
+        end
+    """)) # -> (if, [False, 2, (if, [False, 3, (if, [True, 4, 5])])])
+    print(toil.walk(r"""
+        if False then
+            2
+        elif False then
+            3
+        elif True then
+            4
+        else
+            5
+        end
+    """)) # -> 4
+
+    toil.walk(r"""
+        def fib_rec(n) do
+            if n == 0 then 0
+            elif n == 1 then 1
+            else fib_rec(n - 1) + fib_rec(n - 2) end
+        end
+    """)
+    print(toil.walk(r""" fib_rec(0) """)) # -> 0
+    print(toil.walk(r""" fib_rec(1) """)) # -> 1
+    print(toil.walk(r""" fib_rec(6) """)) # -> 8
+
+    # print(toil.walk(r""" if True 2 end """)) # -> Expected then
+    # print(toil.walk(r""" if True then 2 """)) # -> Expected end
+    # print(toil.walk(r""" if True then 2 3 end """)) # -> Expected end
+    # print(toil.walk(r""" if True then 2 else 3 """)) # -> Expected end
+    # print(toil.walk(r""" if False then 2 elif True 3 end """)) # -> Expected then
+    # print(toil.walk(r""" if False then 2 elif True then 3 """)) # -> Expected end

@@ -263,18 +263,38 @@ class TestTreeWalkInterpreter:
         assert toil.walk(r""" if False then 3 else if True then 4 else 5 end end """) == 4
         assert toil.walk(r""" if False then 3 else if False then 4 else 5 end end """) == 5
 
+        assert toil.walk(r""" if True then 2 end """) == 2
+        assert toil.walk(r""" if False then 2 end """) is None
+        assert toil.walk(r""" if True then 2 else 3 end """) == 2
+        assert toil.walk(r""" if False then 2 else 3 end """) == 3
+        assert toil.walk(r""" if True then 2 elif True then 3 end """) == 2
+        assert toil.walk(r""" if False then 2 elif True then 3 end """) == 3
+        assert toil.walk(r""" if False then 2 elif False then 3 end """) is None
+        assert toil.walk(r""" if False then 2 elif True then 3 else 4 end """) == 3
+        assert toil.walk(r""" if True then 2 elif True then 3 else 4 end """) == 2
+        assert toil.walk(r""" if False then 2 elif False then 3 else 4 end """) == 4
+        assert toil.walk(r""" if False then 2 elif False then 3 elif True then 4 else 5 end """) == 4
+
+        with pytest.raises(AssertionError, match="Expected then"):
+            toil.walk(r""" if True 2 end """)
+        with pytest.raises(AssertionError, match="Expected end"):
+            toil.walk(r""" if True then 2 """)
         with pytest.raises(AssertionError, match="Expected then"):
             toil.walk(r""" if then 2 else 3 end """)
         with pytest.raises(AssertionError, match="Expected then"):
             toil.walk(r""" if True 2 else 3 end """)
-        with pytest.raises(AssertionError, match="Expected else"):
+        with pytest.raises(AssertionError, match="Expected end"):
             toil.walk(r""" if True then else 3 end """)
-        with pytest.raises(AssertionError, match="Expected else"):
+        with pytest.raises(AssertionError, match="Expected end"):
             toil.walk(r""" if True then 2 3 end """)
         with pytest.raises(AssertionError, match="Expected end"):
             toil.walk(r""" if True then 2 else end """)
         with pytest.raises(AssertionError, match="Expected end"):
             toil.walk(r""" if True then 2 else 3 """)
+        with pytest.raises(AssertionError, match="Expected then"):
+            toil.walk(r""" if False then 2 elif True 3 end """)
+        with pytest.raises(AssertionError, match="Expected end"):
+            toil.walk(r""" if False then 2 elif True then 3 """)
 
     def test_while(self, capsys):
         assert toil.walk(r""" i := 1; while i < 3 do i = i + 1 end """) == 3
@@ -429,8 +449,8 @@ class TestExamples:
         toil.walk(r"""
             def fib_rec(n) do
                 if n == 0 then 0
-                else if n == 1 then 1
-                else fib_rec(n - 1) + fib_rec(n - 2) end end
+                elif n == 1 then 1
+                else fib_rec(n - 1) + fib_rec(n - 2) end
             end
         """)
         assert toil.walk(r""" fib_rec(0) """) == 0
@@ -484,8 +504,8 @@ class TestExamples:
             def node(val, left, right) do
                 func op do
                     if op == 1 then val
-                    else if op == 2 then left
-                    else right end end
+                    elif op == 2 then left
+                    else right end
                 end
             end
         """)
@@ -501,11 +521,11 @@ class TestExamples:
                     cur_val := bst(1);
                     if val == cur_val then
                         bst
-                    else if val < cur_val then
+                    elif val < cur_val then
                         node(cur_val, bst_put(bst(2), val), bst(3))
                     else
                         node(cur_val, bst(2), bst_put(bst(3), val))
-                    end end
+                    end
                 end
             end
         """)
@@ -530,9 +550,9 @@ class TestExamples:
                 else
                     cur_val := bst(1);
                     if val == cur_val then True
-                    else if val < cur_val then bst_find(bst(2), val)
+                    elif val < cur_val then bst_find(bst(2), val)
                     else bst_find(bst(3), val)
-                    end end
+                    end
                 end
             end
         """)
