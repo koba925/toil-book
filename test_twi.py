@@ -5,6 +5,7 @@ from toil import Interpreter
 def setup_toil():
     global toil
     toil = Interpreter()
+    toil.stdlib()
 
 class TestTreeWalkInterpreter:
     # Ensure test independence
@@ -621,6 +622,43 @@ class TestTreeWalkInterpreter:
         with pytest.raises(AssertionError, match="Invalid assign target"):
             toil.walk(r""" 2 = 3 """)
 
+    def test_stdlib(self):
+        assert toil.walk(r"""
+            sum := 0;
+            n := 10;
+            for i in range(1, n + 1, 1) do
+                sum = sum + i
+            then sum end
+        """) == 55
+
+        assert toil.walk(r""" a := range(2, 10, 1) """) == [2, 3, 4, 5, 6, 7, 8, 9]
+        assert toil.walk(r""" b := range(2, 10, 3) """) == [2, 5, 8]
+
+        assert toil.walk(r""" first(a) """) == 2
+        assert toil.walk(r""" rest(a) """) == [3, 4, 5, 6, 7, 8, 9]
+        assert toil.walk(r""" last(a) """) == 9
+
+        assert toil.walk(r""" first(tuple(2, 3, 4)) """) == 2
+        assert toil.walk(r""" rest(tuple(2, 3, 4)) """) == (3, 4)
+
+        assert toil.walk(r""" map(a, func n do n * 2 end) """) == [4, 6, 8, 10, 12, 14, 16, 18]
+
+        assert toil.walk(r""" filter(a, func n do n % 2 == 0 end) """) == [2, 4, 6, 8]
+
+        assert toil.walk(r""" reverse(a) """) == [9, 8, 7, 6, 5, 4, 3, 2]
+        assert toil.walk(r""" reverse([]) """) == []
+
+        assert toil.walk(r""" zip(a, [4, 5, 6]) """) == [[2, 4], [3, 5], [4, 6]]
+
+        assert toil.walk(r""" enumerate(a) """) == [
+            [0, 2], [1, 3], [2, 4], [3, 5], [4, 6], [5, 7], [6, 8], [7, 9]
+        ]
+
+        assert toil.walk(r""" all([True, True], func x do x end) """) is True
+        assert toil.walk(r""" all([True, False], func x do x end) """) is False
+        assert toil.walk(r""" any([False, True], func x do x end) """) is True
+        assert toil.walk(r""" any([False, False], func x do x end) """) is False
+
     def test_empty_source(self):
         with pytest.raises(AssertionError, match="Invalid token"):
             toil.walk(r"""""")
@@ -784,6 +822,34 @@ class TestExamples:
         """)
         assert capsys.readouterr().out == "False\nTrue\nFalse\nTrue\nFalse\nTrue\nFalse\nTrue\nFalse\nTrue\n"
 
+    def test_bubblesort(self):
+        toil.walk(r"""
+            def bubblesort(a) do
+                n := len(a);
+                for i in range(0, n, 1) do
+                    for j in range(0, n - i - 1, 1) do
+                        if a[j] > a[j + 1] then
+                            tmp := a[j]; a[j] = a[j + 1]; a[j + 1] = tmp
+                        end
+                    end
+                then a end
+            end
+        """)
+        assert toil.walk(r""" bubblesort([5, 3, 8, 4, 2]) """) == [2, 3, 4, 5, 8]
+
+    def test_quicksort(self):
+        toil.walk(r"""
+            def quicksort(a) do
+                if len(a) <= 1 then a else
+                    pivot := first(a); rem := rest(a);
+                    left := filter(rem, func x do x < pivot end);
+                    right := filter(rem, func x do x >= pivot end);
+                    quicksort(left) + [pivot] + quicksort(right)
+                end
+            end
+        """)
+        assert toil.walk(r""" quicksort([5, 3, 8, 4, 2]) """) == [2, 3, 4, 5, 8]
+
     def test_is_prime(self):
         toil.walk(r"""
             def is_prime(n) do
@@ -813,13 +879,7 @@ class TestExamples:
                         end
                     end;
                     i = i + 1
-                end;
-
-                primes := [];
-                i := 0; while i < n do
-                    if s[i] then push(primes, i) end;
-                    i = i + 1
-                then primes end
+                then map(filter(enumerate(s), last), first) end
             end;
 
             sieve(10)

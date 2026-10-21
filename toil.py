@@ -601,6 +601,54 @@ class Interpreter:
 
         self._env = Environment(self._env)
 
+    def stdlib(self) -> None:
+        self.walk(r"""
+            def first(a) do a[0] end;
+            def rest(a) do slice(a, 1, None) end;
+            def last(a) do a[-1] end;
+
+            def range(start, stop, step) do
+                b := [];
+                i := start; while i < stop do push(b, i); i = i + step then b end
+            end;
+
+            def map(a, f) do
+                b := [];
+                for x in a do push(b, f(x)) then b end
+            end;
+
+            def filter(a, f) do
+                b := [];
+                for x in a do if f(x) then push(b, x) end then b end
+            end;
+
+            def zip(a, b) do
+                z := [];
+                i := 0; while i < len(a) and i < len(b) do
+                    push(z, [a[i], b[i]]); i = i + 1
+                then z end
+            end;
+
+            def reverse(a) do
+                b := []; l := len(a);
+                for i in range(1, l + 1, 1) do push(b, a[l - i]) then b end
+            end;
+
+            def enumerate(a) do
+                zip(range(0, len(a), 1), a)
+            end;
+
+            def all(a, f) do
+                for x in a do if not f(x) then return(False) end then True end
+            end;
+
+            def any(a, f) do
+                for x in a do if f(x) then return(True) end then False end
+            end
+        """)
+
+        self._env = Environment(self._env)
+
     def scan(self, src: str) -> list[Token]:
         return Scanner(src).tokenize()
 
@@ -637,6 +685,7 @@ if __name__ == "__main__":
     import sys
 
     toil = Interpreter()
+    toil.stdlib()
 
     def print_code(code):
         for addr, inst in enumerate(code): print(f"{addr:3}: {inst}")
@@ -680,51 +729,127 @@ if __name__ == "__main__":
 
     # Example
 
-    print("For:")
-
-    print(toil.ast(r""" for i in [0, 1, 2] do print(i) end """))
-    # -> (for, [i, [0, 1, 2], (print, [i]), None, None])
-    print(toil.walk(r""" for i in [0, 1, 2] do print(i) end """))
-    # -> 0\n1\n2\nNone
-    print(toil.walk(r""" for i in tuple(0, 1, 2) do print(i) end """))
-    # -> 0\n1\n2\nNone
-
-    print(toil.ast(r""" for i in [0, 1, 2] do push(a, i) then a else 1/0 end """))
-    # -> (for, [i, [0, 1, 2], (push, [a, i]), a, (div, [1, 0])])
-    print(toil.walk(r"""
-        a := [];
-        for i in [0, 1, 2] do push(a, i) then a else 1/0 end
-    """)) # -> [0, 1, 2]
-
-    print(toil.walk(r"""
-        a := [];
-        for i in [0, 1, 2] do
-            if i == 2 then break end;
-            push(a, i)
-        else a end
-    """)) # -> [0, 1]
-
-    print(toil.walk(r"""
-        a := [];
-        for i in [0, 1, 2] do
-            if i == 1 then continue end;
-            push(a, i)
-        then a end
-    """)) # -> [0, 2]
-
-    print(toil.walk(r""" for i in [] do 1/0 then 2 end """)) # -> 2
+    print("Standard library:")
 
     print(toil.walk(r"""
         sum := 0;
-        for i in [1, 2, 3] do
+        n := 10;
+        for i in range(1, n + 1, 1) do
             sum = sum + i
         then sum end
-    """)) # -> 6
+    """)) # -> 55
 
-    # toil.walk(r""" for i in 2 do i end """) # -> Invalid loop target
-    # toil.walk(r""" for in a do i end """) # -> Expected in
-    # toil.walk(r""" for i a do i end """) # -> Expected in
-    # toil.walk(r""" for i in do i end """) # -> Expected do
-    # toil.walk(r""" for i in a i end """) # -> Expected do
-    # toil.walk(r""" for i in a do end """) # -> Expected end
-    # toil.walk(r""" for i in a do i """) # -> Expected end
+    print(toil.walk(r""" a := range(2, 10, 1) """)) # -> [2, 3, 4, 5, 6, 7, 8, 9]
+    print(toil.walk(r""" b := range(2, 10, 3) """)) # -> [2, 5, 8]
+
+    print(toil.walk(r""" first(a) """)) # -> 2
+    print(toil.walk(r""" rest(a) """)) # -> [3, 4, 5, 6, 7, 8, 9]
+    print(toil.walk(r""" last(a) """)) # -> 9
+
+    print(toil.walk(r""" first(tuple(2, 3, 4)) """)) # -> 2
+    print(toil.walk(r""" rest(tuple(2, 3, 4)) """)) # -> (3, 4)
+
+    print(toil.walk(r""" map(a, func n do n * 2 end) """))
+    # -> [4, 6, 8, 10, 12, 14, 16, 18]
+
+    print(toil.walk(r""" filter(a, func n do n % 2 == 0 end) """))
+    # -> [2, 4, 6, 8]
+
+    print(toil.walk(r""" reverse(a) """)) # -> [9, 8, 7, 6, 5, 4, 3, 2]
+    print(toil.walk(r""" reverse([]) """)) # -> []
+
+    print(toil.walk(r""" zip(a, [4, 5, 6]) """)) # -> [[2, 4], [3, 5], [4, 6]]
+
+    print(toil.walk(r""" enumerate(a) """))
+    # -> [[0, 2], [1, 3], [2, 4], [3, 5], [4, 6], [5, 7], [6, 8], [7, 9]]
+
+    print(toil.walk(r""" all([True, True], func x do x end) """)) # -> True
+    print(toil.walk(r""" all([True, False], func x do x end) """)) # -> False
+    print(toil.walk(r""" any([False, True], func x do x end) """)) # -> True
+    print(toil.walk(r""" any([False, False], func x do x end) """)) # -> False
+
+    toil.walk(r"""
+        def bubblesort(a) do
+            n := len(a);
+            for i in range(0, n, 1) do
+                for j in range(0, n - i - 1, 1) do
+                    if a[j] > a[j + 1] then
+                        tmp := a[j]; a[j] = a[j + 1]; a[j + 1] = tmp
+                    end
+                end
+            then a end
+        end
+    """)
+    print(toil.walk(r""" bubblesort([5, 3, 8, 4, 2]) """)) # -> [2, 3, 4, 5, 8]
+
+    toil.walk(r"""
+        def quicksort(a) do
+            if len(a) <= 1 then a else
+                pivot := first(a); rem := rest(a);
+                left := filter(rem, func x do x < pivot end);
+                right := filter(rem, func x do x >= pivot end);
+                quicksort(left) + [pivot] + quicksort(right)
+            end
+        end
+    """)
+    print(toil.walk(r""" quicksort([5, 3, 8, 4, 2]) """)) # -> [2, 3, 4, 5, 8]
+
+    toil.walk(r"""
+        def sieve(n) do
+            s := [False, False] + [True] * (n - 2);
+            i := 2; while i * i < n do
+                if s[i] then
+                    j := i * i; while j < n do
+                        s[j] = False;
+                        j = j + i
+                    end
+                end;
+                i = i + 1
+            then s end
+        end;
+
+        s := sieve(10)
+    """)
+
+    toil.walk(r"""
+        primes := [];
+        i := 0; while i < 10 do
+            if s[i] then push(primes, i) end;
+            i = i + 1
+        end;
+        print(primes)
+    """) # -> [2, 3, 5, 7]
+
+    toil.walk(r"""
+        primes := [];
+        for i in range(0, 10, 1) do
+            if s[i] then push(primes, i) end
+        end;
+        print(primes)
+    """) # -> [2, 3, 5, 7]
+
+    toil.walk(r"""
+        print(enumerate(s));
+        print(filter(enumerate(s), last));
+        print(map(filter(enumerate(s), last), first))
+    """)
+    # -> [[0, False], [1, False], [2, True], ..., [9, False]]
+    # -> [[2, True], [3, True], [5, True], [7, True]]
+    # -> [2, 3, 5, 7]
+
+    print(toil.walk(r"""
+        def sieve(n) do
+            s := [False, False] + [True] * (n - 2);
+            i := 2; while i * i < n do
+                if s[i] then
+                    j := i * i; while j < n do
+                        s[j] = False;
+                        j = j + i
+                    end
+                end;
+                i = i + 1
+            then map(filter(enumerate(s), last), first) end
+        end;
+
+        sieve(10)
+    """)) # -> [2, 3, 5, 7]
