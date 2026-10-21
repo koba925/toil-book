@@ -16,6 +16,32 @@ class TestTreeWalkInterpreter:
             # Comment
         """) == 2
 
+    def test_comparison(self):
+        assert toil.walk(r""" 2 == 2 """) is True
+        assert toil.walk(r""" 2 == 3 """) is False
+        assert toil.walk(r""" None == None """) is True
+        assert toil.walk(r""" None == True """) is False
+        assert toil.walk(r""" True == True """) is True
+        assert toil.walk(r""" True == False """) is False
+        assert toil.walk(r""" False == False """) is True
+
+        assert toil.walk(r""" 2 < 2 """) is False
+        assert toil.walk(r""" 2 < 3 """) is True
+        assert toil.walk(r""" 2 > 2 """) is False
+        assert toil.walk(r""" 3 > 2 """) is True
+
+        assert toil.walk(r""" 2 == 2 == 2 """) is False
+        assert toil.walk(r""" 2 == 2 == True """) is True
+        assert toil.walk(r""" 2 + 3 == 5 """) is True
+        assert toil.walk(r""" 2 < 3 == True """) is True
+
+        with pytest.raises(AssertionError, match="Invalid token"):
+            toil.walk(r""" 2 == == 2 """)
+        with pytest.raises(AssertionError, match="Invalid token"):
+            toil.walk(r""" == 2 """)
+        with pytest.raises(AssertionError, match="Invalid token"):
+            toil.walk(r""" 2 == """)
+
     def test_add_sub(self):
         assert toil.walk(r""" 2+3 """) == 5
         assert toil.walk(r""" 5 - 3 """) == 2
