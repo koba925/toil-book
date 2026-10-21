@@ -1,3 +1,13 @@
+class Ident:
+    __match_args__ = ("name",)
+
+    def __init__(self, name): self.name = name
+    def __hash__(self): return hash(self.name)
+    def __repr__(self): return self.name
+    def __str__(self): return self.name
+    def __eq__(self, other):
+        return isinstance(other, Ident) and self.name == other.name
+
 def is_ident_first(c): return c.isalpha() or c == "_"
 def is_ident_rest(c): return c.isalnum() or c == "_"
 def is_ident(s): return is_ident_first(s[0])
@@ -20,13 +30,13 @@ class Scanner:
                 case c if c in "=:":
                     self._advance()
                     if self._current_char() == "=": self._advance()
-                    self._tokens.append(self._lexeme())
+                    self._tokens.append(Ident(self._lexeme()))
                 case c if c in "+-*/%()<>,;":
-                    self._tokens.append(c); self._advance()
+                    self._tokens.append(Ident(c)); self._advance()
                 case invalid:
                     assert False, f"Invalid character @ tokenize(): {invalid}"
 
-        self._tokens.append("$EOF")
+        self._tokens.append(Ident("$EOF"))
         return self._tokens
 
     def _comment(self):
@@ -44,7 +54,7 @@ class Scanner:
             case "None": self._tokens.append(None)
             case "True": self._tokens.append(True)
             case "False": self._tokens.append(False)
-            case ident: self._tokens.append(ident)
+            case ident: self._tokens.append(Ident(ident))
 
     def _lexeme(self):
         return self._src[self._start_pos:self._current_pos]
@@ -65,7 +75,7 @@ class Parser:
 
     def parse(self):
         expr = self._expression()
-        assert self._current_token() == "$EOF", \
+        assert self._current_token() == Ident("$EOF"), \
             f"Extra token @ parse(): {self._current_token()}"
         return expr
 
@@ -73,112 +83,116 @@ class Parser:
 
     def _sequence(self):
         exprs = [self._define_assign()]
-        while self._current_token() == ";":
+        while self._current_token() == Ident(";"):
             self._current_and_advance()
             exprs.append(self._define_assign())
-        return exprs[0] if len(exprs) == 1 else ("seq", exprs)
+        return exprs[0] if len(exprs) == 1 else (Ident("seq"), exprs)
 
     def _define_assign(self):
         return self._binary_right({
-            ":=": "define", "=": "assign"
+            Ident(":="): Ident("define"), Ident("="): Ident("assign")
         }, self._comparison)
 
     def _comparison(self):
         return self._binary_left({
-            "==": "equal", "<": "less", ">": "greater"
+            Ident("=="): Ident("equal"),
+            Ident("<"): Ident("less"), Ident(">"): Ident("greater")
         }, self._add_sub)
 
     def _add_sub(self):
-        return self._binary_left({"+": "add", "-": "sub"}, self._mul_div_mod)
+        return self._binary_left({
+            Ident("+"): Ident("add"), Ident("-"): Ident("sub")
+        }, self._mul_div_mod)
 
     def _mul_div_mod(self):
         return self._binary_left({
-            "*": "mul", "/": "div", "%": "mod"
+            Ident("*"): Ident("mul"), Ident("/"): Ident("div"),
+            Ident("%"): Ident("mod")
         }, self._call)
 
     def _call(self):
         target = self._primary()
-        while self._current_token() == "(":
+        while self._current_token() == Ident("("):
             self._current_and_advance()
-            target = (target, self._comma_separated_exprs(")"))
-            self._consume(")")
+            target = (target, self._comma_separated_exprs(Ident(")")))
+            self._consume(Ident(")"))
         return target
 
     def _primary(self):
         match self._current_token():
             case None | bool() | int(): return self._current_and_advance()
-            case "(": return self._group()
-            case "func": return self._func()
-            case "def": return self._def()
-            case "scope": return self._scope()
-            case "if": return self._if()
-            case "while": return self._while()
-            case str(name) if is_ident(name): return self._current_and_advance()
+            case Ident("("): return self._group()
+            case Ident("func"): return self._func()
+            case Ident("def"): return self._def()
+            case Ident("scope"): return self._scope()
+            case Ident("if"): return self._if()
+            case Ident("while"): return self._while()
+            case Ident(name) if is_ident(name): return self._current_and_advance()
             case invalid:
                 assert False, f"Invalid token @ _primary(): {invalid}"
 
     def _group(self):
         self._current_and_advance()
         expr = self._expression()
-        self._consume(")")
+        self._consume(Ident(")"))
         return expr
 
     def _func(self):
         self._current_and_advance()
-        params = self._comma_separated_exprs("do")
-        self._consume("do")
+        params = self._comma_separated_exprs(Ident("do"))
+        self._consume(Ident("do"))
         body_expr = self._expression()
-        self._consume("end")
-        return ("func", [params, body_expr])
+        self._consume(Ident("end"))
+        return (Ident("func"), [params, body_expr])
 
     def _def(self):
         self._current_and_advance()
         call_expr = self._expression()
-        self._consume("do")
+        self._consume(Ident("do"))
         body_expr = self._expression()
-        self._consume("end")
+        self._consume(Ident("end"))
         match call_expr:
-            case (name, params):
-                return ("define", [name, ("func", [params, body_expr])])
-            case str():
-                return ("define", [call_expr, ("func", [[], body_expr])])
+            case (Ident() as ident, params):
+                return (Ident("define"), [ident, (Ident("func"), [params, body_expr])])
+            case Ident() as ident:
+                return (Ident("define"), [ident, (Ident("func"), [[], body_expr])])
             case _:
                 assert False, f"Invalid def syntax @ _def(): {call_expr}"
 
     def _scope(self):
         self._current_and_advance()
         body_expr = self._expression()
-        self._consume("end")
-        return ("scope", [body_expr])
+        self._consume(Ident("end"))
+        return (Ident("scope"), [body_expr])
 
     def _if(self):
         self._current_and_advance()
         cond_expr = self._expression()
-        self._consume("then")
+        self._consume(Ident("then"))
         then_expr = self._expression()
-        self._consume("else")
+        self._consume(Ident("else"))
         else_expr = self._expression()
-        self._consume("end")
-        return ("if", [cond_expr, then_expr, else_expr])
+        self._consume(Ident("end"))
+        return (Ident("if"), [cond_expr, then_expr, else_expr])
 
     def _while(self):
         self._current_and_advance()
         cond_expr = self._expression()
-        self._consume("do")
+        self._consume(Ident("do"))
         body_expr = self._expression()
-        self._consume("end")
-        return ("while", [cond_expr, body_expr])
+        self._consume(Ident("end"))
+        return (Ident("while"), [cond_expr, body_expr])
 
     def _binary_left(self, ops, sub_elem):
         left = sub_elem()
-        while type(op := self._current_token()) is str and op in ops:
+        while type(op := self._current_token()) is Ident and op in ops:
             self._current_and_advance()
             left = (ops[op], [left, sub_elem()])
         return left
 
     def _binary_right(self, ops, sub_elem):
         left = sub_elem()
-        if type(op := self._current_token()) is str and op in ops:
+        if type(op := self._current_token()) is Ident and op in ops:
             self._current_and_advance()
             return (ops[op], [left, self._binary_right(ops, sub_elem)])
         else:
@@ -188,7 +202,7 @@ class Parser:
         cse = []
         if self._current_token() != terminator:
             cse.append(self._expression())
-            while self._current_token() == ",":
+            while self._current_token() == Ident(","):
                 self._current_and_advance()
                 cse.append(self._expression())
         return cse
@@ -210,25 +224,25 @@ class Environment:
         self._parent = parent
         self._vars = {}
 
-    def define(self, name, val):
-        self._vars[name] = val
+    def define(self, ident, val):
+        self._vars[ident] = val
         return val
 
-    def assign(self, name, val):
-        if name in self._vars:
-            self._vars[name] = val
+    def assign(self, ident, val):
+        if ident in self._vars:
+            self._vars[ident] = val
             return val
         elif self._parent:
-            return self._parent.assign(name, val)
+            return self._parent.assign(ident, val)
         else:
-            assert False, f"Undefined variable @ assign(): {name}"
+            assert False, f"Undefined variable @ assign(): {ident}"
 
-    def val(self, name):
-        if name in self._vars: return self._vars[name]
+    def val(self, ident):
+        if ident in self._vars: return self._vars[ident]
         elif self._parent:
-            return self._parent.val(name)
+            return self._parent.val(ident)
         else:
-            assert False, f"Undefined variable @ val(): {name}"
+            assert False, f"Undefined variable @ val(): {ident}"
 
     def bind(self, params, args):
         for param, arg in zip(params, args):
@@ -239,19 +253,19 @@ class Evaluator:
     def eval(self, expr, env):
         match expr:
             case None | bool() | int(): return expr
-            case str(name): return env.val(name)
-            case ("func", [params, body_expr]):
-                return ("closure", [params, body_expr, env])
-            case ("scope", [body_expr]):
+            case Ident() as ident: return env.val(ident)
+            case (Ident("func"), [params, body_expr]):
+                return (Ident("closure"), [params, body_expr, env])
+            case (Ident("scope"), [body_expr]):
                 return self.eval(body_expr, Environment(env))
-            case ("define", [name, expr]):
-                return env.define(name, self.eval(expr, env))
-            case ("assign", [name, expr]):
-                return env.assign(name, self.eval(expr, env))
-            case ("seq", exprs): return self._seq(exprs, env)
-            case ("if", [cond_expr, then_expr, else_expr]):
+            case (Ident("define"), [Ident() as ident, expr]):
+                return env.define(ident, self.eval(expr, env))
+            case (Ident("assign"), [Ident() as ident, expr]):
+                return env.assign(ident, self.eval(expr, env))
+            case (Ident("seq"), exprs): return self._seq(exprs, env)
+            case (Ident("if"), [cond_expr, then_expr, else_expr]):
                 return self._if(cond_expr, then_expr, else_expr, env)
-            case ("while", [cond_expr, body_expr]):
+            case (Ident("while"), [cond_expr, body_expr]):
                 return self._while(cond_expr, body_expr, env)
             case (op_expr, args_expr):
                 return self._op(op_expr, args_expr, env)
@@ -279,7 +293,7 @@ class Evaluator:
         args_val = [self.eval(arg, env) for arg in args_expr]
         match op_val:
             case f if callable(f): return f(args_val)
-            case ("closure", [params, body_expr, closure_env]):
+            case (Ident("closure"), [params, body_expr, closure_env]):
                 new_env = Environment(closure_env)
                 new_env.bind(params, args_val)
                 return self.eval(body_expr, new_env)
@@ -300,19 +314,19 @@ class Compiler:
     def _expression(self, expr):
         match expr:
             case None | bool() | int(): self._emit("const", expr)
-            case str(name): self._emit("get", name)
-            case ("func", [params, body_expr]): self._func(params, body_expr)
-            case ("define", [name, expr]):
+            case Ident() as ident: self._emit("get", ident)
+            case (Ident("func"), [params, body_expr]): self._func(params, body_expr)
+            case (Ident("define"), [Ident() as ident, expr]):
                 self._expression(expr)
-                self._emit("def", name)
-            case ("assign", [name, expr]):
+                self._emit("def", ident)
+            case (Ident("assign"), [Ident() as ident, expr]):
                 self._expression(expr)
-                self._emit("set", name)
-            case ("scope", [body_expr]): self._scope(body_expr)
-            case ("seq", exprs): self._seq(exprs)
-            case ("if", [cond_expr, then_expr, else_expr]):
+                self._emit("set", ident)
+            case (Ident("scope"), [body_expr]): self._scope(body_expr)
+            case (Ident("seq"), exprs): self._seq(exprs)
+            case (Ident("if"), [cond_expr, then_expr, else_expr]):
                 self._if(cond_expr, then_expr, else_expr)
-            case ("while", [cond_expr, body_expr]):
+            case (Ident("while"), [cond_expr, body_expr]):
                 self._while(cond_expr, body_expr)
             case (op_expr, args_expr):
                 self._op(op_expr, args_expr)
@@ -391,14 +405,15 @@ class VM:
                     self._env = Environment(self._env)
                 case ("leave_scope",):
                     _, self._env = self._ctrl_stack.pop()
-                case ("def", name): self._env.define(name, self._stack[-1])
-                case ("set", name): self._env.assign(name, self._stack[-1])
-                case ("get", name): self._stack.append(self._env.val(name))
+                case ("def", ident): self._env.define(ident, self._stack[-1])
+                case ("set", ident): self._env.assign(ident, self._stack[-1])
+                case ("get", ident): self._stack.append(self._env.val(ident))
                 case ("jump", addr): self._ip = addr
                 case ("jump_if_false", addr):
                     if not self._stack.pop(): self._ip = addr
                 case ("make_closure", params, body_code):
-                    self._stack.append(("closure", [params, body_code, self._env]))
+                    self._stack.append((Ident("closure"),
+                            [params, body_code, self._env]))
                 case ("call", nargs): self._call(nargs)
                 case ("ret",): self._ret()
                 case _:
@@ -414,7 +429,7 @@ class VM:
         args = list(reversed([self._stack.pop() for _ in range(nargs)]))
         match op:
             case f if callable(f): self._stack.append(f(args))
-            case ("closure", [params, body_code, closure_env]):
+            case (Ident("closure"), [params, body_code, closure_env]):
                 self._ctrl_stack.append(("call", self._code, self._ip, self._env))
                 self._env = Environment(closure_env)
                 self._env.bind(params, args)
@@ -432,15 +447,15 @@ class Interpreter:
         self._builtins()
 
     def _builtins(self):
-        self._env.define("add", lambda args: args[0] + args[1])
-        self._env.define("sub", lambda args: args[0] - args[1])
-        self._env.define("mul", lambda args: args[0] * args[1])
-        self._env.define("div", lambda args: args[0] // args[1])
-        self._env.define("mod", lambda args: args[0] % args[1])
-        self._env.define("equal", lambda args: args[0] == args[1])
-        self._env.define("less", lambda args: args[0] < args[1])
-        self._env.define("greater", lambda args: args[0] > args[1])
-        self._env.define("print", lambda args: print(*args))
+        self._env.define(Ident("add"), lambda args: args[0] + args[1])
+        self._env.define(Ident("sub"), lambda args: args[0] - args[1])
+        self._env.define(Ident("mul"), lambda args: args[0] * args[1])
+        self._env.define(Ident("div"), lambda args: args[0] // args[1])
+        self._env.define(Ident("mod"), lambda args: args[0] % args[1])
+        self._env.define(Ident("equal"), lambda args: args[0] == args[1])
+        self._env.define(Ident("less"), lambda args: args[0] < args[1])
+        self._env.define(Ident("greater"), lambda args: args[0] > args[1])
+        self._env.define(Ident("print"), lambda args: print(*args))
 
         self._env = Environment(self._env)
 
@@ -518,6 +533,227 @@ if __name__ == "__main__":
         case _: assert False, f"Invalid command line: {sys.argv}"
 
     # Example
+
+    print("Ident class:")
+    print(Ident("aaa") == Ident("aaa")) # -> True
+    print(Ident("aaa") == Ident("bbb")) # -> False
+    print(Ident("aaa") == "aaa") # -> False
+
+    print({Ident("aaa"): 2}[Ident("aaa")]) # -> 2
+    print(Ident("aaa") in {Ident("aaa"): 2}) # -> True
+    print(Ident("bbb") in {Ident("aaa"): 2}) # -> False
+    print("aaa" in {Ident("aaa"): 2}) # -> False
+
+    print(toil.scan(r""" a := 2 """)) # -> [a, :=, 2, $EOF]
+    print(toil.ast(r""" a := 2 """)) # -> (define, [a, 2])
+
+    print(Ident("aaa")) # -> aaa
+    print("aaa") # -> aaa
+
+    print(repr(Ident("aaa"))) # -> aaa
+    print(repr("aaa")) # -> 'aaa'
+
+    print([Ident("aaa")]) # -> [aaa]
+    print(["aaa"]) # -> ['aaa']
+
+    print("### Tree walk interpreter ###")
+
+    print("Factorial:")
+
+    toil.walk(r"""
+        def factorial_iter(n) do
+            result := 1;
+            while n > 0 do
+                result = result * n;
+                n = n - 1
+            end;
+            result
+        end
+    """)
+    print(toil.walk(r""" factorial_iter(0) """))
+    # -> 1
+    print(toil.walk(r""" factorial_iter(1) """))
+    # -> 1
+    print(toil.walk(r""" factorial_iter(4) """))
+    # -> 24
+
+    toil.walk(r"""
+        def factorial_rec(n) do
+            if n == 0 then 1 else n * factorial_rec(n - 1) end
+        end
+    """)
+    print(toil.walk(r""" factorial_rec(0) """))
+    # -> 1
+    print(toil.walk(r""" factorial_rec(1) """))
+    # -> 1
+    print(toil.walk(r""" factorial_rec(4) """))
+    # -> 24
+
+    print("Fibonacci:")
+
+    toil.walk(r"""
+        def fib_iter(n) do
+            a := 0; b := 1;
+            while n > 0 do
+                tmp := b; b = a + b; a = tmp;
+                n = n - 1
+            end;
+            a
+        end
+    """)
+    print(toil.walk(r""" fib_iter(0) """))
+    # -> 0
+    print(toil.walk(r""" fib_iter(1) """))
+    # -> 1
+    print(toil.walk(r""" fib_iter(6) """))
+    # -> 8
+
+    toil.walk(r"""
+        def fib_rec(n) do
+            if n == 0 then 0
+            else if n == 1 then 1
+            else fib_rec(n - 1) + fib_rec(n - 2) end end
+        end
+    """)
+    print(toil.walk(r""" fib_rec(0) """))
+    # -> 0
+    print(toil.walk(r""" fib_rec(1) """))
+    # -> 1
+    print(toil.walk(r""" fib_rec(6) """))
+    # -> 8
+
+    print("GCD:")
+
+    toil.walk(r"""
+        def gcd_iter(a, b) do
+            while b > 0 do
+                tmp := b; b = a % b; a = tmp
+            end;
+            a
+        end
+    """)
+    print(toil.walk(r""" gcd_iter(12, 18) """))
+    # -> 6
+
+    toil.walk(r"""
+        def gcd_rec(a, b) do
+            if b == 0 then a else gcd_rec(b, a % b) end
+        end
+    """)
+    print(toil.walk(r""" gcd_rec(12, 18) """))
+    # -> 6
+
+    print("Even/Odd (Mutual Recursion):")
+
+    toil.walk(r"""
+        def even(n) do if n == 0 then True else odd(n - 1) end end;
+        def odd(n) do if n == 0 then False else even(n - 1) end end
+    """)
+    print(toil.walk(r""" even(2) """))
+    # -> True
+    print(toil.walk(r""" even(3) """))
+    # -> False
+    print(toil.walk(r""" odd(2) """))
+    # -> False
+    print(toil.walk(r""" odd(3) """))
+    # -> True
+
+    print("Counter (Closure):")
+
+    toil.walk(r"""
+        def make_counter() do
+            count := 0;
+            func do count = count + 1 end
+        end
+    """)
+    toil.walk(r""" c1 := make_counter() """)
+    toil.walk(r""" c2 := make_counter() """)
+    print(toil.walk(r""" c1() """))
+    # -> 1
+    print(toil.walk(r""" c1() """))
+    # -> 2
+    print(toil.walk(r""" c2() """))
+    # -> 1
+    print(toil.walk(r""" c2() """))
+    # -> 2
+
+    print("Binary search tree:")
+    print("Building tree:")
+
+    toil.walk(r"""
+        def node(val, left, right) do
+            func op do
+                if op == 1 then val
+                else if op == 2 then left
+                else right end end
+            end
+        end
+    """)
+
+    toil.walk(r""" n1 := node(2, 3, 4) """)
+    print(toil.walk(r""" n1(1) """))
+    print(toil.walk(r""" n1(2) """))
+    print(toil.walk(r""" n1(3) """))
+    # -> 2\n3\n4
+
+    toil.walk(r"""
+        def bst_put(bst, val) do
+            if bst == None then node(val, None, None)
+            else
+                cur_val := bst(1);
+                if val == cur_val then
+                    bst
+                else if val < cur_val then
+                    node(cur_val, bst_put(bst(2), val), bst(3))
+                else
+                    node(cur_val, bst(2), bst_put(bst(3), val))
+                end end
+            end
+        end
+    """)
+    toil.walk(r""" bst := None """)
+    toil.walk(r""" bst = bst_put(bst, 7) """)
+    toil.walk(r""" bst = bst_put(bst, 3) """)
+    toil.walk(r""" bst = bst_put(bst, 1) """)
+    toil.walk(r""" bst = bst_put(bst, 9) """)
+    toil.walk(r""" bst = bst_put(bst, 5) """)
+
+    print("Walking tree:")
+    toil.walk(r"""
+        def bst_walk(bst) do
+            if bst == None then None
+            else
+                bst_walk(bst(2)); print(bst(1)); bst_walk(bst(3))
+            end
+        end
+    """)
+    toil.walk(r"""
+        def bst_find(bst, val) do
+            if bst == None then False
+            else
+                cur_val := bst(1);
+                if val == cur_val then True
+                else if val < cur_val then bst_find(bst(2), val)
+                else bst_find(bst(3), val)
+                end end
+            end
+        end
+    """)
+
+    toil.walk(r""" bst_walk(bst) """)
+    # -> 1\n3\n5\n7\n9
+
+    print("Finding values:")
+    toil.walk(r"""
+        i := 0;
+        while i < 10 do
+            print(bst_find(bst, i));
+            i = i + 1
+        end
+    """)
+    # -> False\nTrue\nFalse\nTrue\nFalse\nTrue\nFalse\nTrue\nFalse\nTrue
+
+    print("### Intermediate code interpreter ###")
 
     print("Factorial:")
 
