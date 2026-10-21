@@ -75,10 +75,20 @@ class TestTreeWalkInterpreter:
         assert toil.walk(r""" True == False """) is False
         assert toil.walk(r""" False == False """) is True
 
+        assert toil.walk(r""" 2 != 2 """) is False
+        assert toil.walk(r""" 2 != 3 """) is True
+
         assert toil.walk(r""" 2 < 2 """) is False
         assert toil.walk(r""" 2 < 3 """) is True
         assert toil.walk(r""" 2 > 2 """) is False
         assert toil.walk(r""" 3 > 2 """) is True
+
+        assert toil.walk(r""" 3 <= 2 """) is False
+        assert toil.walk(r""" 2 <= 2 """) is True
+        assert toil.walk(r""" 2 <= 3 """) is True
+        assert toil.walk(r""" 2 >= 3 """) is False
+        assert toil.walk(r""" 2 >= 2 """) is True
+        assert toil.walk(r""" 3 >= 2 """) is True
 
         assert toil.walk(r""" 2 == 2 == 2 """) is False
         assert toil.walk(r""" 2 == 2 == True """) is True
