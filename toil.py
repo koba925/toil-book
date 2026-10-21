@@ -40,7 +40,7 @@ class Scanner:
                     self._advance()
                     if self._current_char() == "=": self._advance()
                     self._tokens.append(Ident(self._lexeme()))
-                case c if c in "+-*/%(),;":
+                case c if c in "+-*/%()[],;":
                     self._tokens.append(Ident(c)); self._advance()
                 case invalid:
                     assert False, f"Invalid character @ tokenize(): {invalid}"
@@ -129,14 +129,20 @@ class Parser:
         }, self._unaries)
 
     def _unaries(self):
-        return self._unary({Ident("-"): Ident("neg")}, self._call)
+        return self._unary({Ident("-"): Ident("neg")}, self._call_index)
 
-    def _call(self):
+    def _call_index(self):
         target = self._primary()
-        while self._current_token() == Ident("("):
+        while (op := self._current_token()) in (Ident("("), Ident("[")):
             self._current_and_advance()
-            target = (target, self._comma_separated_exprs(Ident(")")))
-            self._consume(Ident(")"))
+            match op:
+                case Ident("("):
+                    target = (target, self._comma_separated_exprs(Ident(")")))
+                    self._consume(Ident(")"))
+                case Ident("["):
+                    index = self._expression()
+                    self._consume(Ident("]"))
+                    target = (Ident("index"), [target, index])
         return target
 
     def _primary(self) -> Expr:
@@ -524,6 +530,12 @@ class Interpreter:
 
         self._env.define(Ident("not"), lambda args: not args[0])
 
+        self._env.define(Ident("tuple"), lambda args: tuple(args))
+
+        self._env.define(Ident("index"), lambda args: args[0][args[1]])
+        self._env.define(Ident("len"), lambda args: len(args[0]))
+        self._env.define(Ident("slice"), lambda args: args[0][args[1]:args[2]])
+
         self._env.define(Ident("print"), lambda args: print(*args))
 
         self._env = Environment(self._env)
@@ -607,68 +619,95 @@ if __name__ == "__main__":
 
     # Example
 
-    print("While-then-else:")
+    print("Tuple:")
 
-    print(toil.ast(r""" while i < 3 do i = i + 1 end """))
-    # -> (while, [(less, [i, 3]), (assign, [i, (add, [i, 1])]), None, None])
-    print(toil.walk(r""" i := 1; while i < 3 do i = i + 1 end """))
-    # -> None
-    print(toil.walk(r""" i := 1; while i < 3 do break end """))
-    # -> None
+    print(toil.walk(r""" tuple() """)) # -> ()
+    print(toil.walk(r""" tuple(2) """)) # -> (2,)
+    print(toil.walk(r""" tuple(2, 3) """)) # -> (2, 3)
 
-    print(toil.ast(r""" while i < 3 do i = i + 1 then i else 0 end """))
-    # -> (while, [(less, [i, 3]), (assign, [i, (add, [i, 1])]), i, 0])
-    print(toil.walk(r""" i := 1; while i < 3 do i = i + 1 then i else 0 end """))
-    # -> 3
-    print(toil.walk(r""" i := 1; while i < 3 do break then i else 0 end """))
-    # -> 0
+    toil.walk(r""" t := tuple(2, 3, 4) """)
+    print(toil.walk(r""" index(t, 0) """)) # -> 2
+    print(toil.walk(r""" index(t, 2) """)) # -> 4
 
-    print(toil.walk(r""" i := 1; while i < 3 do i = i + 1 then i end """))
-    # -> 3
-    print(toil.walk(r""" i := 1; while i < 3 do break then i end """))
-    # -> None
+    print(toil.walk(r""" len(tuple(2, 3)) """)) # -> 2
+    print(toil.walk(r""" slice(tuple(2, 3, 4, 5), 1, 3) """)) # -> (3, 4)
+    print(toil.walk(r""" slice(tuple(2, 3, 4, 5), None, 3) """)) # -> (2, 3, 4)
+    print(toil.walk(r""" slice(tuple(2, 3, 4, 5), 1, None) """)) # -> (3, 4, 5)
+    print(toil.scan(r""" t[2] """)) # -> [t, [, 2, ], $EOF]
+    print(toil.ast(r""" t[2] """)) # -> (index, [t, 2])
+    toil.walk(r""" t := tuple(2, 3, 4) """)
+    print(toil.walk(r""" t[1] """)) # -> 3
+    print(toil.walk(r""" t[-1] """)) # -> 4
 
-    print(toil.walk(r""" i := 1; while i < 3 do i = i + 1 else 0 end """))
-    # -> None
-    print(toil.walk(r""" i := 1; while i < 3 do break else 0 end """))
-    # -> 0
+    print(toil.walk(r""" t := tuple(2, 3, tuple(4, 5)) """)) # -> (2, 3, (4, 5))
+    print(toil.walk(r""" t[2] """)) # -> (4, 5)
+    print(toil.walk(r""" t[2][0] """)) # -> 4
 
-    print(toil.walk(r"""
-        sum := 0; i := 1;
-        while i < 4 do
-            sum = sum + i;
-            i = i + 1
-        then sum end
-    """)) # -> 6
+    toil.walk(r""" f := func do tuple(add, sub) end """)
+    print(toil.ast(r""" f()[0](2, 3) """)) # -> ((index, [(f, []), 0]), [2, 3])
+    print(toil.walk(r""" f()[0](2, 3) """)) # -> 5
 
-    print(toil.walk(r"""
-        i := 0; while i < 4 do
-            if i == 1 then i = 2; continue end;
-            print(i);
-            i = i + 1
-        then i end
-    """)) # -> 0\n2\n3\n4
+    print(toil.walk(r""" tuple(2, 3) == tuple(2, 3) """)) # -> True
+    print(toil.walk(r""" tuple(2, 3) == tuple(2, 4) """)) # -> False
+    print(toil.walk(r""" tuple(2, 3) + tuple(4, 5) """)) # -> (2, 3, 4, 5)
 
+    # toil.walk(r""" t[2 """) # -> Expected ]
+    # toil.walk(r""" 2] """) # -> Extra token
+
+    print("Binary search tree:")
     toil.walk(r"""
-        i := 1; while i < 4 do
-            j := 1; while j < 4 do
-                if i == 2 and j == 2 then break end;
-                print(i, j);
-                j = j + 1
-            else break end;
+        def bst_put(bst, val) do
+            if bst == None then tuple(val, None, None)
+            else
+                cur_val := bst[0];
+                if val == cur_val then
+                    bst
+                elif val < cur_val then
+                    tuple(cur_val, bst_put(bst[1], val), bst[2])
+                else
+                    tuple(cur_val, bst[1], bst_put(bst[2], val))
+                end
+            end
+        end
+    """)
+    toil.walk(r""" bst := None """)
+    toil.walk(r""" bst = bst_put(bst, 7) """)
+    toil.walk(r""" bst = bst_put(bst, 3) """)
+    toil.walk(r""" bst = bst_put(bst, 1) """)
+    toil.walk(r""" bst = bst_put(bst, 9) """)
+    toil.walk(r""" bst = bst_put(bst, 5) """)
+
+    print("Walking tree:")
+    toil.walk(r"""
+        def bst_walk(bst) do
+            if bst == None then None
+            else
+                bst_walk(bst[1]); print(bst[0]); bst_walk(bst[2])
+            end
+        end
+    """)
+    toil.walk(r"""
+        def bst_find(bst, val) do
+            if bst == None then False
+            else
+                cur_val := bst[0];
+                if val == cur_val then True
+                elif val < cur_val then bst_find(bst[1], val)
+                else bst_find(bst[2], val)
+                end
+            end
+        end
+    """)
+
+    toil.walk(r""" bst_walk(bst) """)
+    # -> 1\n3\n5\n7\n9
+
+    print("Finding values:")
+    toil.walk(r"""
+        i := 0;
+        while i < 10 do
+            print(bst_find(bst, i));
             i = i + 1
         end
     """)
-    # -> 1 1\n1 2\n1 3\n2 1
-
-    print(toil.walk(r""" while False do 1/0 then 3 else 4 end """)) # -> 3
-
-    # toil.walk(r""" while do 2 then 3 else 4 end """) # -> Expected do
-    # toil.walk(r""" while True 2 then 3 else 4 end """) # -> Expected do
-    # toil.walk(r""" while True do then 3 else 4 end """) # -> Expected end
-    # toil.walk(r""" while True do 2 3 else 4 end """) # -> Expected end
-    # toil.walk(r""" while True do 2 then else 4 end """) # -> Expected end
-    # toil.walk(r""" while True do 2 then 3 4 end """) # -> Expected end
-    # toil.walk(r""" while True do 2 then 3 else end """) # -> Expected end
-    # toil.walk(r""" while True do 2 then 3 else 4 """) # -> Expected end
-
+    # -> False\nTrue\nFalse\nTrue\nFalse\nTrue\nFalse\nTrue\nFalse\nTrue

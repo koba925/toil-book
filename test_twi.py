@@ -475,6 +475,40 @@ class TestTreeWalkInterpreter:
         assert toil.walk(r""" return; 3 """) is None
         assert toil.walk(r""" return(2); 3 """) == 2
 
+    def test_tuple(self):
+        assert toil.walk(r""" tuple() """) == ()
+        assert toil.walk(r""" tuple(2) """) == (2,)
+        assert toil.walk(r""" tuple(2, 3) """) == (2, 3)
+
+        toil.walk(r""" t := tuple(2, 3, 4) """)
+        assert toil.walk(r""" index(t, 0) """) == 2
+        assert toil.walk(r""" index(t, 2) """) == 4
+
+        toil.walk(r""" t := tuple(2, 3, 4) """)
+        assert toil.walk(r""" t[1] """) == 3
+        assert toil.walk(r""" t[-1] """) == 4
+
+        assert toil.walk(r""" t := tuple(2, 3, tuple(4, 5)) """) == (2, 3, (4, 5))
+        assert toil.walk(r""" t[2] """) == (4, 5)
+        assert toil.walk(r""" t[2][0] """) == 4
+
+        toil.walk(r""" f := func do tuple(add, sub) end """)
+        assert toil.walk(r""" f()[0](2, 3) """) == 5
+
+        assert toil.walk(r""" len(tuple(2, 3)) """) == 2
+        assert toil.walk(r""" slice(tuple(2, 3, 4, 5), 1, 3) """) == (3, 4)
+        assert toil.walk(r""" slice(tuple(2, 3, 4, 5), None, 3) """) == (2, 3, 4)
+        assert toil.walk(r""" slice(tuple(2, 3, 4, 5), 1, None) """) == (3, 4, 5)
+
+        assert toil.walk(r""" tuple(2, 3) == tuple(2, 3) """) is True
+        assert toil.walk(r""" tuple(2, 3) == tuple(2, 4) """) is False
+        assert toil.walk(r""" tuple(2, 3) + tuple(4, 5) """) == (2, 3, 4, 5)
+
+        with pytest.raises(AssertionError, match=r"Expected \]"):
+            toil.walk(r""" t[2 """)
+        with pytest.raises(AssertionError, match="Extra token"):
+            toil.walk(r""" 2] """)
+
     def test_empty_source(self):
         with pytest.raises(AssertionError, match="Invalid token"):
             toil.walk(r"""""")
@@ -584,30 +618,16 @@ class TestExamples:
 
     def test_binary_search_tree(self, capsys):
         toil.walk(r"""
-            def node(val, left, right) do
-                func op do
-                    if op == 1 then val
-                    elif op == 2 then left
-                    else right end
-                end
-            end
-        """)
-        toil.walk(r""" n1 := node(2, 3, 4) """)
-        assert toil.walk(r""" n1(1) """) == 2
-        assert toil.walk(r""" n1(2) """) == 3
-        assert toil.walk(r""" n1(3) """) == 4
-
-        toil.walk(r"""
             def bst_put(bst, val) do
-                if bst == None then node(val, None, None)
+                if bst == None then tuple(val, None, None)
                 else
-                    cur_val := bst(1);
+                    cur_val := bst[0];
                     if val == cur_val then
                         bst
                     elif val < cur_val then
-                        node(cur_val, bst_put(bst(2), val), bst(3))
+                        tuple(cur_val, bst_put(bst[1], val), bst[2])
                     else
-                        node(cur_val, bst(2), bst_put(bst(3), val))
+                        tuple(cur_val, bst[1], bst_put(bst[2], val))
                     end
                 end
             end
@@ -623,7 +643,7 @@ class TestExamples:
             def bst_walk(bst) do
                 if bst == None then None
                 else
-                    bst_walk(bst(2)); print(bst(1)); bst_walk(bst(3))
+                    bst_walk(bst[1]); print(bst[0]); bst_walk(bst[2])
                 end
             end
         """)
@@ -631,10 +651,10 @@ class TestExamples:
             def bst_find(bst, val) do
                 if bst == None then False
                 else
-                    cur_val := bst(1);
+                    cur_val := bst[0];
                     if val == cur_val then True
-                    elif val < cur_val then bst_find(bst(2), val)
-                    else bst_find(bst(3), val)
+                    elif val < cur_val then bst_find(bst[1], val)
+                    else bst_find(bst[2], val)
                     end
                 end
             end
