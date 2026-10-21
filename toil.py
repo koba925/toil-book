@@ -155,6 +155,7 @@ class Parser:
             case Ident("scope"): return self._scope()
             case Ident("if"): return self._if()
             case Ident("while"): return self._while()
+            case Ident("for"): return self._for()
             case Ident(name) if is_ident(name): return self._current_and_advance()
             case invalid:
                 assert False, f"Invalid token @ _primary(): {invalid}"
@@ -229,6 +230,23 @@ class Parser:
             else_expr = self._expression()
         self._consume(Ident("end"))
         return (Ident("while"), [cond_expr, body_expr, then_expr, else_expr])
+
+    def _for(self):
+        self._current_and_advance()
+        var_expr = self._expression()
+        self._consume(Ident("in"))
+        coll_expr = self._expression()
+        self._consume(Ident("do"))
+        body_expr = self._expression()
+        then_expr = else_expr = None
+        if self._current_token() == Ident("then"):
+            self._current_and_advance()
+            then_expr = self._expression()
+        if self._current_token() == Ident("else"):
+            self._current_and_advance()
+            else_expr = self._expression()
+        self._consume(Ident("end"))
+        return (Ident("for"), [var_expr, coll_expr, body_expr, then_expr, else_expr])
 
     def _binary_left(self, ops, sub_elem):
         left = sub_elem()
@@ -338,6 +356,10 @@ class Evaluator:
                 return self.eval(left_expr, env) or self.eval(right_expr, env)
             case (Ident("while"), [cond_expr, body_expr, then_expr, else_expr]):
                 return self._while(cond_expr, body_expr, then_expr, else_expr, env)
+            case (Ident("for"), [var_expr, coll_expr, body_expr, then_expr, else_expr]):
+                return self._for(
+                    var_expr, coll_expr, body_expr, then_expr, else_expr, env
+                )
             case (op_expr, args_expr):
                 return self._op(op_expr, args_expr, env)
             case _:
@@ -372,6 +394,18 @@ class Evaluator:
     def _while(self, cond_expr, body_expr, then_expr, else_expr, env):
         while self.eval(cond_expr, env):
             try:
+                self.eval(body_expr, env)
+            except ContinueException: continue
+            except BreakException: return self.eval(else_expr, env)
+        return self.eval(then_expr, env)
+
+    def _for(self, var_expr, coll_expr, body_expr, then_expr, else_expr, env):
+        coll_val = self.eval(coll_expr, env)
+        assert isinstance(coll_val, (list, tuple)), \
+            f"Invalid loop target @ _for(): {coll_val}"
+        for val in coll_val:
+            try:
+                env.define(var_expr, val)
                 self.eval(body_expr, env)
             except ContinueException: continue
             except BreakException: return self.eval(else_expr, env)
@@ -646,47 +680,51 @@ if __name__ == "__main__":
 
     # Example
 
-    print("Assign to an array element:")
+    print("For:")
 
-    print(toil.ast(r""" arr[2] = 3 """)) # -> (assign, [(index, [arr, 2]), 3])
-    print(toil.walk(r""" arr := [2, 3, 4]; arr[2] = 5 """)) # -> 5
-    print(toil.walk(r""" arr """)) # -> [2, 3, 5]
-    print(toil.walk(r""" arr[-1] = 6; arr """)) # -> [2, 3, 6]
+    print(toil.ast(r""" for i in [0, 1, 2] do print(i) end """))
+    # -> (for, [i, [0, 1, 2], (print, [i]), None, None])
+    print(toil.walk(r""" for i in [0, 1, 2] do print(i) end """))
+    # -> 0\n1\n2\nNone
+    print(toil.walk(r""" for i in tuple(0, 1, 2) do print(i) end """))
+    # -> 0\n1\n2\nNone
 
-    print(toil.ast(r""" arr2[0][1] = 5 """))
-    # -> (assign, [(index, [(index, [arr2, 0]), 1]), 5])
-    print(toil.walk(r""" arr2 := [[2, 3], 4]; arr2[0][1] = 5; arr2 """))
-    # -> [[2, 5], 4]
+    print(toil.ast(r""" for i in [0, 1, 2] do push(a, i) then a else 1/0 end """))
+    # -> (for, [i, [0, 1, 2], (push, [a, i]), a, (div, [1, 0])])
+    print(toil.walk(r"""
+        a := [];
+        for i in [0, 1, 2] do push(a, i) then a else 1/0 end
+    """)) # -> [0, 1, 2]
 
-    print(toil.walk(r""" a := [2, 3]; b := [4, 5]; a[0] = b[1] = 6; [a, b] """))
-    # -> [[6, 3], [4, 6]]
+    print(toil.walk(r"""
+        a := [];
+        for i in [0, 1, 2] do
+            if i == 2 then break end;
+            push(a, i)
+        else a end
+    """)) # -> [0, 1]
 
-    # toil.walk(r""" tpl := tuple(2, 3, 4); tpl[2] = 5 """)
-    # -> Invalid index assignment
-    # toil.walk(r""" arr := [2, 3]; arr[None] = 4 """)
-    # -> Invalid index assignment
-    print(toil.walk(r""" arr := [2, 3]; arr[True] = 4; arr """))
-    # -> [2, 4]
-    # toil.walk(r""" 2 = 3 """) # -> Invalid assign target
+    print(toil.walk(r"""
+        a := [];
+        for i in [0, 1, 2] do
+            if i == 1 then continue end;
+            push(a, i)
+        then a end
+    """)) # -> [0, 2]
 
-    toil.walk(r"""
-        def sieve(n) do
-            s := [False, False] + [True] * (n - 2);
-            i := 2; while i * i < n do
-                if s[i] then
-                    j := i * i; while j < n do
-                        s[j] = False;
-                        j = j + i
-                    end
-                end;
-                i = i + 1
-            end;
+    print(toil.walk(r""" for i in [] do 1/0 then 2 end """)) # -> 2
 
-            primes := [];
-            i := 0; while i < n do
-                if s[i] then push(primes, i) end;
-                i = i + 1
-            then primes end
-        end
-    """)
-    print(toil.walk(r""" sieve(10) """)) # -> [2, 3, 5, 7]
+    print(toil.walk(r"""
+        sum := 0;
+        for i in [1, 2, 3] do
+            sum = sum + i
+        then sum end
+    """)) # -> 6
+
+    # toil.walk(r""" for i in 2 do i end """) # -> Invalid loop target
+    # toil.walk(r""" for in a do i end """) # -> Expected in
+    # toil.walk(r""" for i a do i end """) # -> Expected in
+    # toil.walk(r""" for i in do i end """) # -> Expected do
+    # toil.walk(r""" for i in a i end """) # -> Expected do
+    # toil.walk(r""" for i in a do end """) # -> Expected end
+    # toil.walk(r""" for i in a do i """) # -> Expected end

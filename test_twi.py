@@ -395,6 +395,57 @@ class TestTreeWalkInterpreter:
         with pytest.raises(AssertionError, match="Continue at top level"):
             toil.walk(r""" continue """)
 
+    def test_for(self, capsys):
+        assert toil.walk(r""" for i in [0, 1, 2] do print(i) end """) is None
+        assert capsys.readouterr().out == "0\n1\n2\n"
+        assert toil.walk(r""" for i in tuple(0, 1, 2) do print(i) end """) is None
+        assert capsys.readouterr().out == "0\n1\n2\n"
+
+        assert toil.walk(r"""
+            a := [];
+            for i in [0, 1, 2] do push(a, i) then a else 1/0 end
+        """) == [0, 1, 2]
+
+        assert toil.walk(r"""
+            a := [];
+            for i in [0, 1, 2] do
+                if i == 2 then break end;
+                push(a, i)
+            else a end
+        """) == [0, 1]
+
+        assert toil.walk(r"""
+            a := [];
+            for i in [0, 1, 2] do
+                if i == 1 then continue end;
+                push(a, i)
+            then a end
+        """) == [0, 2]
+
+        assert toil.walk(r""" for i in [] do 1/0 then 2 end """) == 2
+
+        assert toil.walk(r"""
+            sum := 0;
+            for i in [1, 2, 3] do
+                sum = sum + i
+            then sum end
+        """) == 6
+
+        with pytest.raises(AssertionError, match="Invalid loop target"):
+            toil.walk(r""" for i in 2 do i end """)
+        with pytest.raises(AssertionError, match="Expected in"):
+            toil.walk(r""" for in a do i end """)
+        with pytest.raises(AssertionError, match="Expected in"):
+            toil.walk(r""" for i a do i end """)
+        with pytest.raises(AssertionError, match="Expected do"):
+            toil.walk(r""" for i in do i end """)
+        with pytest.raises(AssertionError, match="Expected do"):
+            toil.walk(r""" for i in a i end """)
+        with pytest.raises(AssertionError, match="Expected end"):
+            toil.walk(r""" for i in a do end """)
+        with pytest.raises(AssertionError, match="Expected end"):
+            toil.walk(r""" for i in a do i """)
+
     def test_func(self):
         assert toil.walk(r"""func do 2 end ()""") == 2
         assert toil.walk(r"""func a do a + 2 end (3)""") == 5
