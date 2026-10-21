@@ -233,6 +233,35 @@ class TestTreeWalkInterpreter:
         with pytest.raises(AssertionError, match="Expected end"):
             toil.walk(r""" if True then 2 else 3 """)
 
+    def test_while(self, capsys):
+        assert toil.walk(r""" i := 1; while i < 3 do i = i + 1 end """) == 3
+        assert toil.walk(r""" i := 1; while i < 3 do i = i + 1; i * 10 end """) == 30
+
+        assert toil.walk(r"""
+            sum := 0;
+            i := 1; while i < 4 do sum = sum + i; i = i + 1 end;
+            sum
+        """) == 6
+
+        toil.walk(r"""
+            i := 1; while i < 3 do
+                j := 1; while j < 3 do print(i, j); j = j + 1 end;
+                i = i + 1
+            end
+        """)
+        assert capsys.readouterr().out == "1 1\n1 2\n2 1\n2 2\n"
+
+        assert toil.walk(r""" while False do 1/0 end """) is None
+
+        with pytest.raises(AssertionError, match="Expected do"):
+            toil.walk(r""" while do 2 end """)
+        with pytest.raises(AssertionError, match="Expected do"):
+            toil.walk(r""" while True 2 end """)
+        with pytest.raises(AssertionError, match="Expected end"):
+            toil.walk(r""" while True do end """)
+        with pytest.raises(AssertionError, match="Expected end"):
+            toil.walk(r""" while True do 2 """)
+
     def test_empty_source(self):
         with pytest.raises(AssertionError, match="Invalid token"):
             toil.walk(r"""""")
