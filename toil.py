@@ -27,14 +27,13 @@ class Environment:
         for param, arg in zip(params, args):
             self.define(param, arg)
 
-
 class Evaluator:
     def eval(self, expr, env):
         match expr:
             case None | bool() | int(): return expr
             case str(name): return env.val(name)
             case ("func", [params, body_expr]):
-                return expr
+                return ("closure", [params, body_expr, env])
             case ("scope", [body_expr]):
                 return self.eval(body_expr, Environment(env))
             case ("define", [name, expr]):
@@ -65,8 +64,8 @@ class Evaluator:
         args_val = [self.eval(arg, env) for arg in args_expr]
         match op_val:
             case f if callable(f): return f(args_val)
-            case ("func", [params, body_expr]):
-                new_env = Environment(env)
+            case ("closure", [params, body_expr, closure_env]):
+                new_env = Environment(closure_env)
                 new_env.bind(params, args_val)
                 return self.eval(body_expr, new_env)
             case _:
@@ -104,7 +103,7 @@ if __name__ == "__main__":
     print("User functions:")
 
     print(toil.eval(("func", [["a", "b"], ("add", ["a", "b"])])))
-    # -> ('func', [['a', 'b'], ('add', ['a', 'b'])])
+    # -> ('closure', [['a', 'b'], ('add', ['a', 'b']), <__main__.Environment object at ...>])
 
     toil.eval(("define", ["myadd", ("func", [["a", "b"], ("add", ["a", "b"])])]))
     print(toil.eval(("myadd", [2, 3])))
@@ -141,7 +140,7 @@ if __name__ == "__main__":
         ("define", ["a", 3]),
         ("f", [])
     ])])))
-    # -> 3
+    # -> 2
 
     print(toil.eval(("seq", [
         ("define", ["a", 2]),
@@ -152,4 +151,19 @@ if __name__ == "__main__":
         ])])]),
         ("g", [])
     ])))
-    # -> 3
+    # -> 2
+
+    print("Counter (Closure):")
+
+    toil.eval(("define", ["make_counter", ("func", [[], ("seq", [
+        ("define", ["count", 0]),
+        ("func", [[], ("assign", ["count", ("add", ["count", 1])])])
+    ])])]))
+
+    toil.eval(("define", ["c1", ("make_counter", [])]))
+    toil.eval(("define", ["c2", ("make_counter", [])]))
+
+    print(toil.eval(("c1", []))) # -> 1
+    print(toil.eval(("c1", []))) # -> 2
+    print(toil.eval(("c2", []))) # -> 1
+    print(toil.eval(("c2", []))) # -> 2
