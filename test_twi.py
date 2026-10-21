@@ -297,13 +297,24 @@ class TestTreeWalkInterpreter:
             toil.walk(r""" if False then 2 elif True then 3 """)
 
     def test_while(self, capsys):
-        assert toil.walk(r""" i := 1; while i < 3 do i = i + 1 end """) == 3
-        assert toil.walk(r""" i := 1; while i < 3 do i = i + 1; i * 10 end """) == 30
+        assert toil.walk(r""" i := 1; while i < 3 do i = i + 1 end """) is None
+        assert toil.walk(r""" i := 1; while i < 3 do break end """) is None
+
+        assert toil.walk(r""" i := 1; while i < 3 do i = i + 1 then i else 0 end """) == 3
+        assert toil.walk(r""" i := 1; while i < 3 do break then i else 0 end """) == 0
+
+        assert toil.walk(r""" i := 1; while i < 3 do i = i + 1 then i end """) == 3
+        assert toil.walk(r""" i := 1; while i < 3 do break then i end """) is None
+
+        assert toil.walk(r""" i := 1; while i < 3 do i = i + 1 else 0 end """) is None
+        assert toil.walk(r""" i := 1; while i < 3 do break else 0 end """) == 0
 
         assert toil.walk(r"""
-            sum := 0;
-            i := 1; while i < 4 do sum = sum + i; i = i + 1 end;
-            sum
+            sum := 0; i := 1;
+            while i < 4 do
+                sum = sum + i;
+                i = i + 1
+            then sum end
         """) == 6
 
         toil.walk(r"""
@@ -314,16 +325,24 @@ class TestTreeWalkInterpreter:
         """)
         assert capsys.readouterr().out == "1 1\n1 2\n2 1\n2 2\n"
 
-        assert toil.walk(r""" while False do 1/0 end """) is None
+        assert toil.walk(r""" while False do 1/0 then 3 else 4 end """) == 3
 
         with pytest.raises(AssertionError, match="Expected do"):
-            toil.walk(r""" while do 2 end """)
+            toil.walk(r""" while do 2 then 3 else 4 end """)
         with pytest.raises(AssertionError, match="Expected do"):
-            toil.walk(r""" while True 2 end """)
+            toil.walk(r""" while True 2 then 3 else 4 end """)
         with pytest.raises(AssertionError, match="Expected end"):
-            toil.walk(r""" while True do end """)
+            toil.walk(r""" while True do then 3 else 4 end """)
         with pytest.raises(AssertionError, match="Expected end"):
-            toil.walk(r""" while True do 2 """)
+            toil.walk(r""" while True do 2 3 else 4 end """)
+        with pytest.raises(AssertionError, match="Expected end"):
+            toil.walk(r""" while True do 2 then else 4 end """)
+        with pytest.raises(AssertionError, match="Expected end"):
+            toil.walk(r""" while True do 2 then 3 4 end """)
+        with pytest.raises(AssertionError, match="Expected end"):
+            toil.walk(r""" while True do 2 then 3 else end """)
+        with pytest.raises(AssertionError, match="Expected end"):
+            toil.walk(r""" while True do 2 then 3 else 4 """)
 
     def test_break_and_continue(self, capsys):
         assert toil.walk(r""" while True do break end """) is None
@@ -339,16 +358,25 @@ class TestTreeWalkInterpreter:
         assert capsys.readouterr().out == "0\n2\n3\n"
 
         assert toil.walk(r"""
-            i := 0; while i < 2 do
-                j := 0; while j < 3 do
+            i := 0; while i < 4 do
+                if i == 1 then i = 2; continue end;
+                print(i);
+                i = i + 1
+            then i end
+        """) == 4
+        assert capsys.readouterr().out == "0\n2\n3\n"
+
+        toil.walk(r"""
+            i := 1; while i < 4 do
+                j := 1; while j < 4 do
+                    if i == 2 and j == 2 then break end;
                     print(i, j);
-                    if i == 0 and j == 1 then break end;
                     j = j + 1
-                end;
+                else break end;
                 i = i + 1
             end
-        """) == 2
-        assert capsys.readouterr().out == "0 0\n0 1\n1 0\n1 1\n1 2\n"
+        """)
+        assert capsys.readouterr().out == "1 1\n1 2\n1 3\n2 1\n"
 
         assert toil.walk(r"""
             def check_and_quit(i) do
@@ -472,8 +500,7 @@ class TestExamples:
                 while n > 0 do
                     result = result * n;
                     n = n - 1
-                end;
-                result
+                then result end
             end
         """)
         assert toil.walk(r""" factorial_iter(0) """) == 1
@@ -496,8 +523,7 @@ class TestExamples:
                 while n > 0 do
                     tmp := b; b = a + b; a = tmp;
                     n = n - 1
-                end;
-                a
+                then a end
             end
         """)
         assert toil.walk(r""" fib_iter(0) """) == 0
@@ -520,8 +546,7 @@ class TestExamples:
             def gcd_iter(a, b) do
                 while b > 0 do
                     tmp := b; b = a % b; a = tmp
-                end;
-                a
+                then a end
             end
         """)
         assert toil.walk(r""" gcd_iter(12, 18) """) == 6
@@ -635,8 +660,7 @@ class TestExamples:
                 while i * i <= n do
                     if n % i == 0 then return(False) end;
                     i = i + 1
-                end;
-                True
+                then True end
             end
         """)
         assert toil.walk(r""" is_prime(1) """) is False
