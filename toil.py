@@ -16,9 +16,9 @@ def is_ident(s): return is_ident_first(s[0])
 
 from typing import Callable
 
-type Token = None | bool | int | Ident
-type Expr = None | bool | int | Ident | tuple | list
-type Value = None | bool | int | Callable | tuple | list
+type Token = None | bool | int | str | Ident
+type Expr = None | bool | int | str | Ident | tuple | list
+type Value = None | bool | int | str | Callable | tuple | list
 type Instruction = tuple
 
 class Scanner:
@@ -35,6 +35,7 @@ class Scanner:
                 case c if c.isspace(): self._advance()
                 case "#": self._comment()
                 case c if c.isdecimal(): self._number()
+                case "'": self._raw_string()
                 case c if is_ident_first(c): self._ident()
                 case c if c in "=<>!:":
                     self._advance()
@@ -55,6 +56,15 @@ class Scanner:
     def _number(self):
         while self._current_char().isdecimal(): self._advance()
         self._tokens.append(int(self._lexeme()))
+
+    def _raw_string(self):
+        self._advance()
+        self._start_pos = self._current_pos
+        while (c := self._current_char()) != "'":
+            assert c != "$EOF", f"Unterminated string @ _raw_string(): {c}"
+            self._advance()
+        self._tokens.append(self._lexeme())
+        self._advance()
 
     def _ident(self):
         self._advance()
@@ -147,7 +157,7 @@ class Parser:
 
     def _primary(self) -> Expr:
         match self._current_token():
-            case None | bool() | int(): return self._current_and_advance()
+            case None | bool() | int() | str(): return self._current_and_advance()
             case Ident("("): return self._group()
             case Ident("["): return self._list()
             case Ident("func"): return self._func()
@@ -330,7 +340,7 @@ class ContinueException(Exception): pass
 class Evaluator:
     def eval(self, expr: Expr, env: Environment) -> Value:
         match expr:
-            case None | bool() | int(): return expr
+            case None | bool() | int() | str(): return expr
             case list() as exprs:
                 return [self.eval(expr, env) for expr in exprs]
             case Ident("return"): raise ReturnException(None)
@@ -401,7 +411,7 @@ class Evaluator:
 
     def _for(self, var_expr, coll_expr, body_expr, then_expr, else_expr, env):
         coll_val = self.eval(coll_expr, env)
-        assert isinstance(coll_val, (list, tuple)), \
+        assert isinstance(coll_val, (list, tuple, str)), \
             f"Invalid loop target @ _for(): {coll_val}"
         for val in coll_val:
             try:
@@ -597,6 +607,11 @@ class Interpreter:
         self._env.define(Ident("push"), lambda args: args[0].append(args[1]))
         self._env.define(Ident("pop"), lambda args: args[0].pop(*args[1:]))
 
+        self._env.define(Ident("join"),
+            lambda args: str(args[1]).join(map(str, args[0])))
+        self._env.define(Ident("format"),
+            lambda args: args[0].format(*args[1:]))
+
         self._env.define(Ident("print"), lambda args: print(*args))
 
         self._env = Environment(self._env)
@@ -729,127 +744,23 @@ if __name__ == "__main__":
 
     # Example
 
-    print("Standard library:")
+    print("Raw string:")
 
-    print(toil.walk(r"""
-        sum := 0;
-        n := 10;
-        for i in range(1, n + 1, 1) do
-            sum = sum + i
-        then sum end
-    """)) # -> 55
+    print(toil.scan(r""" 'abc' """)) # -> ['abc', $EOF]
+    print(toil.walk(r""" ['abc'] """)) # -> ['abc']
+    print(toil.walk(r""" [''] """)) # -> ['']
+    print(toil.walk(r""" ['if ; #"\n'] """)) # -> ['if ; #"\\n']
+    print(toil.walk(r""" ['a
+b'] """)) # -> ['a\nb']
 
-    print(toil.walk(r""" a := range(2, 10, 1) """)) # -> [2, 3, 4, 5, 6, 7, 8, 9]
-    print(toil.walk(r""" b := range(2, 10, 3) """)) # -> [2, 5, 8]
+    print(toil.walk(r""" [join(['a', 'b', 'c'], ' ')] """)) # -> ['a b c']
+    print(toil.walk(r""" [format('Age: {}', 25)] """)) # -> ['Age: 25']
 
-    print(toil.walk(r""" first(a) """)) # -> 2
-    print(toil.walk(r""" rest(a) """)) # -> [3, 4, 5, 6, 7, 8, 9]
-    print(toil.walk(r""" last(a) """)) # -> 9
+    print(toil.walk(r""" len('abc') """)) # -> 3
+    print(toil.walk(r""" ['abc' + 'def'] """)) # -> ['abcdef']
+    print(toil.walk(r""" ['abc'[2]] """)) # -> ['c']
+    print(toil.walk(r""" [slice('abcdef', 2, 4)] """)) # -> ['cd']
+    toil.walk(r""" for c in 'abc' do print(c) end """) # -> a\nb\nc
 
-    print(toil.walk(r""" first(tuple(2, 3, 4)) """)) # -> 2
-    print(toil.walk(r""" rest(tuple(2, 3, 4)) """)) # -> (3, 4)
-
-    print(toil.walk(r""" map(a, func n do n * 2 end) """))
-    # -> [4, 6, 8, 10, 12, 14, 16, 18]
-
-    print(toil.walk(r""" filter(a, func n do n % 2 == 0 end) """))
-    # -> [2, 4, 6, 8]
-
-    print(toil.walk(r""" reverse(a) """)) # -> [9, 8, 7, 6, 5, 4, 3, 2]
-    print(toil.walk(r""" reverse([]) """)) # -> []
-
-    print(toil.walk(r""" zip(a, [4, 5, 6]) """)) # -> [[2, 4], [3, 5], [4, 6]]
-
-    print(toil.walk(r""" enumerate(a) """))
-    # -> [[0, 2], [1, 3], [2, 4], [3, 5], [4, 6], [5, 7], [6, 8], [7, 9]]
-
-    print(toil.walk(r""" all([True, True], func x do x end) """)) # -> True
-    print(toil.walk(r""" all([True, False], func x do x end) """)) # -> False
-    print(toil.walk(r""" any([False, True], func x do x end) """)) # -> True
-    print(toil.walk(r""" any([False, False], func x do x end) """)) # -> False
-
-    toil.walk(r"""
-        def bubblesort(a) do
-            n := len(a);
-            for i in range(0, n, 1) do
-                for j in range(0, n - i - 1, 1) do
-                    if a[j] > a[j + 1] then
-                        tmp := a[j]; a[j] = a[j + 1]; a[j + 1] = tmp
-                    end
-                end
-            then a end
-        end
-    """)
-    print(toil.walk(r""" bubblesort([5, 3, 8, 4, 2]) """)) # -> [2, 3, 4, 5, 8]
-
-    toil.walk(r"""
-        def quicksort(a) do
-            if len(a) <= 1 then a else
-                pivot := first(a); rem := rest(a);
-                left := filter(rem, func x do x < pivot end);
-                right := filter(rem, func x do x >= pivot end);
-                quicksort(left) + [pivot] + quicksort(right)
-            end
-        end
-    """)
-    print(toil.walk(r""" quicksort([5, 3, 8, 4, 2]) """)) # -> [2, 3, 4, 5, 8]
-
-    toil.walk(r"""
-        def sieve(n) do
-            s := [False, False] + [True] * (n - 2);
-            i := 2; while i * i < n do
-                if s[i] then
-                    j := i * i; while j < n do
-                        s[j] = False;
-                        j = j + i
-                    end
-                end;
-                i = i + 1
-            then s end
-        end;
-
-        s := sieve(10)
-    """)
-
-    toil.walk(r"""
-        primes := [];
-        i := 0; while i < 10 do
-            if s[i] then push(primes, i) end;
-            i = i + 1
-        end;
-        print(primes)
-    """) # -> [2, 3, 5, 7]
-
-    toil.walk(r"""
-        primes := [];
-        for i in range(0, 10, 1) do
-            if s[i] then push(primes, i) end
-        end;
-        print(primes)
-    """) # -> [2, 3, 5, 7]
-
-    toil.walk(r"""
-        print(enumerate(s));
-        print(filter(enumerate(s), last));
-        print(map(filter(enumerate(s), last), first))
-    """)
-    # -> [[0, False], [1, False], [2, True], ..., [9, False]]
-    # -> [[2, True], [3, True], [5, True], [7, True]]
-    # -> [2, 3, 5, 7]
-
-    print(toil.walk(r"""
-        def sieve(n) do
-            s := [False, False] + [True] * (n - 2);
-            i := 2; while i * i < n do
-                if s[i] then
-                    j := i * i; while j < n do
-                        s[j] = False;
-                        j = j + i
-                    end
-                end;
-                i = i + 1
-            then map(filter(enumerate(s), last), first) end
-        end;
-
-        sieve(10)
-    """)) # -> [2, 3, 5, 7]
+    # toil.walk(r""" ' """) # -> Unterminated string
+    # toil.walk(r""" s := 'abc'; s[2] = 'd' """) # -> Invalid index assignment

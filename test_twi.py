@@ -622,6 +622,28 @@ class TestTreeWalkInterpreter:
         with pytest.raises(AssertionError, match="Invalid assign target"):
             toil.walk(r""" 2 = 3 """)
 
+    def test_raw_string(self, capsys):
+        assert toil.walk(r""" ['abc'] """) == ["abc"]
+        assert toil.walk(r""" [''] """) == [""]
+        assert toil.walk(r""" ['if ; #"\n'] """) == ["if ; #\"\\n"]
+        assert toil.walk(r""" ['a
+b'] """) == ["a\nb"]
+
+        assert toil.walk(r""" [join(['a', 'b', 'c'], ' ')] """) == ["a b c"]
+        assert toil.walk(r""" [format('Age: {}', 25)] """) == ["Age: 25"]
+
+        assert toil.walk(r""" len('abc') """) == 3
+        assert toil.walk(r""" ['abc' + 'def'] """) == ["abcdef"]
+        assert toil.walk(r""" ['abc'[2]] """) == ["c"]
+        assert toil.walk(r""" [slice('abcdef', 2, 4)] """) == ["cd"]
+        assert toil.walk(r""" for c in 'abc' do print(c) end """) is None
+        assert capsys.readouterr().out == "a\nb\nc\n"
+
+        with pytest.raises(AssertionError, match="Unterminated string"):
+            toil.walk(r""" ' """)
+        with pytest.raises(AssertionError, match="Invalid index assignment"):
+            toil.walk(r""" s := 'abc'; s[2] = 'd' """)
+
     def test_stdlib(self):
         assert toil.walk(r"""
             sum := 0;
