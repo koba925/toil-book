@@ -1,9 +1,19 @@
 import pytest
 from toil import Interpreter
 
-toil = Interpreter()
+@pytest.fixture(autouse=True)
+def setup_toil():
+    global toil
+    toil = Interpreter()
 
 class TestTreeWalkInterpreter:
+    # Ensure test independence
+    def test_env_isolation_step1(self):
+        assert toil.walk(r""" a := 2 """) == 2
+    def test_env_isolation_step2(self):
+        with pytest.raises(AssertionError, match="Undefined variable"):
+            toil.walk(r""" a """)
+
     def test_whitespace(self):
         assert toil.walk(r""" 2 """) == 2
         assert toil.walk("""\n2\n""") == 2
@@ -15,6 +25,33 @@ class TestTreeWalkInterpreter:
             2
             # Comment
         """) == 2
+
+    def test_define_assign(self):
+        assert toil.walk(r""" a := 2 """) == 2
+        assert toil.walk(r""" a """) == 2
+
+        assert toil.walk(r""" a = 3 """) == 3
+        assert toil.walk(r""" a """) == 3
+
+        assert toil.walk(r""" b := c := 4 """) == 4
+        assert toil.walk(r""" b """) == 4
+        assert toil.walk(r""" c """) == 4
+
+        assert toil.walk(r""" b = c = 5 """) == 5
+        assert toil.walk(r""" b """) == 5
+        assert toil.walk(r""" c """) == 5
+
+        assert toil.walk(r""" a := 2 == 2 """) is True
+        assert toil.walk(r""" a """) is True
+
+        with pytest.raises(AssertionError, match="Undefined variable"):
+            toil.walk(r""" not_defined = 3 """)
+        with pytest.raises(AssertionError, match="Invalid token"):
+            toil.walk(r""" a = = 3 """)
+        with pytest.raises(AssertionError, match="Invalid token"):
+            toil.walk(r""" a = """)
+        with pytest.raises(AssertionError, match="Invalid token"):
+            toil.walk(r""" = a """)
 
     def test_comparison(self):
         assert toil.walk(r""" 2 == 2 """) is True
