@@ -287,6 +287,22 @@ class Evaluator:
                 assert False, f"Invalid operator @ _op(): {op_val}"
 
 
+class Compiler:
+    def __init__(self, expr):
+        self._expr = expr
+        self._code = []
+
+    def compile(self):
+        self._expression(self._expr)
+        self._code.append(("halt",))
+        return self._code
+
+    def _expression(self, expr):
+        match expr:
+            case None | bool() | int(): self._code.append(("const", expr))
+            case _: assert False, f"Unsupported expression @ _expression(): {expr}"
+
+
 class VM:
     def __init__(self, code):
         self._code = code
@@ -302,6 +318,7 @@ class VM:
                     assert False, f"Invalid instruction @ execute(): {inst}"
         assert len(self._stack) == 1, \
             f"Invalid stack state @ execute(): {self._stack}"
+
         return self._stack.pop()
 
 
@@ -338,6 +355,12 @@ class Interpreter:
     def walk(self, src):
         return self.eval(self.ast(src))
 
+    def compile(self, ast):
+        return Compiler(ast).compile()
+
+    def code(self, src):
+        return self.compile(self.ast(src))
+
     def execute(self, code):
         return VM(code).execute()
 
@@ -346,6 +369,9 @@ if __name__ == "__main__":
     import sys
 
     toil = Interpreter()
+
+    def print_code(code):
+        for addr, inst in enumerate(code): print(f"{addr:3}: {inst}")
 
     def repl():
         while True:
@@ -383,3 +409,11 @@ if __name__ == "__main__":
     # toil.execute([("halt",)]) # -> Invalid stack state
     # toil.execute([("const", 2), ("const", 3), ("halt",)]) # -> Invalid stack state
     # toil.execute([("not_op",), ("halt",)]) # -> Invalid instruction
+
+    print("Compile:")
+
+    print_code(toil.code(r""" 2 """))
+    # ->   0: ('const', 2)
+    # ->   1: ('halt',)
+
+    # toil.compile((2, 3, 4)) # -> Unsupported expression
