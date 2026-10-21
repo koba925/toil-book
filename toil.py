@@ -3,6 +3,8 @@ class Evaluator:
         match expr:
             case None | bool() | int(): return expr
             case ("seq", exprs): return self._seq(exprs)
+            case ("if", [cond_expr, then_expr, else_expr]):
+                return self._if(cond_expr, then_expr, else_expr)
             case ("add", [a, b]): return self.eval(a) + self.eval(b)
             case ("equal", [a, b]): return self.eval(a) == self.eval(b)
             case ("print", [a]): return print(self.eval(a))
@@ -14,6 +16,12 @@ class Evaluator:
         for expr in exprs: val = self.eval(expr)
         return val
 
+    def _if(self, cond_expr, then_expr, else_expr):
+        if self.eval(cond_expr):
+            return self.eval(then_expr)
+        else:
+            return self.eval(else_expr)
+
 
 if __name__ == "__main__":
 
@@ -21,10 +29,16 @@ if __name__ == "__main__":
 
     # Example
 
-    print("Sequence:")
+    print("If:")
 
-    print(toil.eval(("seq", []))) # -> None
-    print(toil.eval(("seq", [("add", [2, 3])]))) # -> 5
-    print(toil.eval(("seq", [("print", [2]), 3]))) # -> 2\n3
-    print(toil.eval(("seq", [("print", [2]), ("seq", [("print", [3]), 4])])))
-    # -> 2\n3\n4
+    print(toil.eval(("if", [("equal", [2, 2]), 3, 4])))
+    # -> 3
+
+    print(toil.eval(("if", [("equal", [2, 3]), 4, 5])))
+    # -> 5
+
+    print(toil.eval(("if", [True, ("seq", [2, 3]), 4])))
+    # -> 3
+
+    print(toil.eval(("if", [False, 2, ("if", [True, 3, 4])])))
+    # -> 3
