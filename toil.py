@@ -164,8 +164,14 @@ class Interpreter:
     def parse(self, tokens):
         return Parser(tokens).parse()
 
+    def ast(self, src):
+        return self.parse(self.scan(src))
+
     def eval(self, expr):
         return Evaluator().eval(expr, self._env)
+
+    def walk(self, src):
+        return self.eval(self.ast(src))
 
 
 if __name__ == "__main__":
@@ -191,3 +197,18 @@ if __name__ == "__main__":
 
     # print(toil.parse([2, 34, "$EOF"])) # -> Extra token
     # print(toil.parse(["$EOF"])) # -> Invalid token
+
+    print("AST:")
+
+    print(toil.ast(r"""2"""))  # -> 2
+    print(toil.ast(r"""23"""))  # -> 23
+
+    print("Interpret numbers:")
+
+    print(toil.walk(r"""2"""))  # -> 2
+    print(toil.walk(r"""02"""))  # -> 2
+    print(toil.walk(r"""23"""))  # -> 23
+
+    # print(toil.walk(r"""$"""))  # -> Invalid character
+    # print(toil.walk(r"""2$"""))  # -> Invalid character
+    # print(toil.walk(r""""""))  # -> Invalid token
